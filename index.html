@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DevCord</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ===================== TELA DE AUTENTICAÇÃO ===================== -->
+<div id="auth-screen" class="auth-screen">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <div class="auth-logo">DC</div>
+      <h1>DevCord</h1>
+      <p>Seu cantinho pra conversar, ligar e criar comunidades.</p>
+    </div>
+
+    <div class="auth-tabs">
+      <button class="auth-tab active" data-tab="login">Entrar</button>
+      <button class="auth-tab" data-tab="register">Criar conta</button>
+    </div>
+
+    <form id="login-form" class="auth-form">
+      <label>Email
+        <input type="email" id="login-email" required placeholder="voce@email.com" />
+      </label>
+      <label>Senha
+        <input type="password" id="login-password" required placeholder="••••••••" />
+      </label>
+      <p class="auth-error" id="login-error"></p>
+      <button type="submit" class="btn-primary">Entrar</button>
+    </form>
+
+    <form id="register-form" class="auth-form hidden">
+      <label>Nome de exibição
+        <input type="text" id="register-name" required placeholder="Como te chamam" maxlength="32" />
+      </label>
+      <label>Email
+        <input type="email" id="register-email" required placeholder="voce@email.com" />
+      </label>
+      <label>Senha
+        <input type="password" id="register-password" required placeholder="Mínimo 6 caracteres" minlength="6" />
+      </label>
+      <p class="auth-error" id="register-error"></p>
+      <button type="submit" class="btn-primary">Criar conta</button>
+    </form>
+  </div>
+</div>
+
+<!-- ===================== APP PRINCIPAL ===================== -->
+<div id="app" class="app hidden">
+
+  <!-- Trilho de servidores -->
+  <nav class="server-rail" id="server-rail">
+    <button class="server-pill server-pill-home active" id="home-pill" title="Início">DC</button>
+    <div class="server-divider"></div>
+    <div class="server-list" id="server-list"></div>
+    <button class="server-pill server-pill-add" id="add-server-btn" title="Criar servidor">+</button>
+  </nav>
+
+  <!-- Sidebar de canais -->
+  <aside class="channel-sidebar">
+    <div class="server-header" id="server-header">
+      <span id="current-server-name">Bem-vindo</span>
+      <button id="server-settings-btn" class="icon-btn hidden" title="Configurações do servidor">⚙</button>
+    </div>
+
+    <div class="channel-groups" id="channel-groups">
+      <p class="empty-hint">Crie ou entre em um servidor pra ver os canais aqui.</p>
+    </div>
+
+    <!-- Cartão do usuário -->
+    <div class="user-card" id="user-card">
+      <img id="user-card-avatar" class="avatar avatar-sm" src="" alt="" />
+      <div class="user-card-info">
+        <span id="user-card-name">—</span>
+        <span id="user-card-status" class="user-card-status">Online</span>
+      </div>
+      <button id="open-profile-btn" class="icon-btn" title="Editar perfil">✎</button>
+    </div>
+  </aside>
+
+  <!-- Área principal -->
+  <main class="main-area">
+    <header class="main-header">
+      <span id="channel-title"># selecione-um-canal</span>
+      <div class="main-header-actions">
+        <button id="call-btn" class="icon-btn hidden" title="Chamada de voz/vídeo">📞</button>
+      </div>
+    </header>
+
+    <!-- Vista: chat de texto -->
+    <section id="view-text" class="view">
+      <div class="messages" id="messages"></div>
+      <form id="message-form" class="message-form">
+        <button type="button" id="attach-btn" class="icon-btn" title="Anexar imagem/vídeo">📎</button>
+        <input type="file" id="file-input" accept="image/*,video/*" class="hidden" />
+        <button type="button" id="sticker-btn" class="icon-btn" title="Figurinhas">🩹</button>
+        <input type="text" id="message-input" placeholder="Mandar mensagem..." autocomplete="off" />
+        <button type="submit" class="btn-primary btn-send">Enviar</button>
+      </form>
+      <div id="sticker-picker" class="sticker-picker hidden"></div>
+      <div id="attach-preview" class="attach-preview hidden"></div>
+    </section>
+
+    <!-- Vista: canal de voz -->
+    <section id="view-voice" class="view hidden">
+      <div class="voice-stage">
+        <h2 id="voice-channel-name">Canal de voz</h2>
+        <div class="voice-participants" id="voice-participants"></div>
+        <div class="voice-controls">
+          <button id="join-voice-btn" class="btn-primary">Entrar no canal de voz</button>
+          <button id="leave-voice-btn" class="btn-secondary hidden">Sair</button>
+          <button id="toggle-mic-btn" class="icon-btn hidden" title="Mutar/desmutar">🎙</button>
+          <button id="toggle-cam-btn" class="icon-btn hidden" title="Câmera">🎥</button>
+        </div>
+        <div class="video-grid" id="video-grid"></div>
+      </div>
+    </section>
+
+    <!-- Vista: fórum -->
+    <section id="view-forum" class="view hidden">
+      <div class="forum-toolbar">
+        <button id="new-post-btn" class="btn-primary">Novo tópico</button>
+      </div>
+      <div class="forum-posts" id="forum-posts"></div>
+      <div class="forum-thread hidden" id="forum-thread">
+        <button id="back-to-forum" class="btn-secondary">← Voltar</button>
+        <div id="forum-thread-content"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ===================== MODAIS ===================== -->
+
+<div class="modal-overlay hidden" id="modal-overlay">
+
+  <div class="modal hidden" id="modal-create-server">
+    <h2>Criar servidor</h2>
+    <label>Nome do servidor
+      <input type="text" id="new-server-name" maxlength="40" placeholder="Ex: Galera do Código" />
+    </label>
+    <label>Ícone (opcional)
+      <input type="file" id="new-server-icon" accept="image/*" />
+    </label>
+    <div class="modal-actions">
+      <button class="btn-secondary modal-cancel">Cancelar</button>
+      <button class="btn-primary" id="confirm-create-server">Criar</button>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="modal-create-channel">
+    <h2>Criar canal</h2>
+    <label>Nome do canal
+      <input type="text" id="new-channel-name" maxlength="30" placeholder="ex: geral" />
+    </label>
+    <label>Tipo
+      <select id="new-channel-type">
+        <option value="text">💬 Texto</option>
+        <option value="voice">🔊 Voz</option>
+        <option value="forum">🗂 Fórum</option>
+      </select>
+    </label>
+    <div class="modal-actions">
+      <button class="btn-secondary modal-cancel">Cancelar</button>
+      <button class="btn-primary" id="confirm-create-channel">Criar</button>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="modal-profile">
+    <h2>Seu perfil</h2>
+    <div class="profile-edit-preview">
+      <div class="profile-banner" id="profile-banner-preview"></div>
+      <img id="profile-avatar-preview" class="avatar avatar-lg" src="" alt="" />
+    </div>
+    <label>Foto de perfil <input type="file" id="profile-avatar-input" accept="image/*" /></label>
+    <label>Banner <input type="file" id="profile-banner-input" accept="image/*" /></label>
+    <label>Nome de exibição <input type="text" id="profile-name-input" maxlength="32" /></label>
+    <label>Bio <textarea id="profile-bio-input" maxlength="190" rows="3"></textarea></label>
+    <label>Cor de destaque
+      <input type="color" id="profile-color-input" value="#5ee6c4" />
+    </label>
+    <label>Fonte do nick
+      <select id="profile-font-input">
+        <option value="Inter">Padrão</option>
+        <option value="'Space Grotesk'">Space Grotesk</option>
+        <option value="'JetBrains Mono'">Mono</option>
+        <option value="cursive">Cursiva</option>
+      </select>
+    </label>
+    <label>Redes sociais
+      <input type="text" id="profile-social-input" placeholder="ex: instagram.com/seuuser, github.com/seuuser" />
+    </label>
+    <div class="modal-actions">
+      <button class="btn-secondary modal-cancel">Cancelar</button>
+      <button class="btn-primary" id="confirm-profile">Salvar</button>
+    </div>
+    <button class="btn-secondary logout-btn" id="logout-btn">Sair da conta</button>
+  </div>
+
+  <div class="modal hidden" id="modal-new-post">
+    <h2>Novo tópico</h2>
+    <label>Título <input type="text" id="new-post-title" maxlength="120" /></label>
+    <label>Conteúdo <textarea id="new-post-body" rows="5" maxlength="4000"></textarea></label>
+    <div class="modal-actions">
+      <button class="btn-secondary modal-cancel">Cancelar</button>
+      <button class="btn-primary" id="confirm-new-post">Publicar</button>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script type="module" src="firebase-config.js"></script>
+<script type="module" src="auth.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
