@@ -1,6 +1,4 @@
-// app.js — núcleo do DevCord
-// Firebase Realtime Database + image.js + webrtc.js
-
+// app.js — núcleo do DevCord (corrigido e completo)
 import {
     auth,
     rtdb,
@@ -43,6 +41,7 @@ let channelsListener = null;
 let messagesListener = null;
 let forumPostsListener = null;
 let forumRepliesListener = null;
+let stickersListener = null;
 
 // =====================================================
 // UTILITÁRIOS
@@ -52,28 +51,28 @@ function exists(id) {
     return !!$(id);
 }
 function toast(message) {
-    const element = $("toast");
-    if (!element) {
+    const el = $("toast");
+    if (!el) {
         console.log("[DevCord]", message);
         return;
     }
-    element.textContent = message;
-    element.classList.remove("hidden");
+    el.textContent = message;
+    el.classList.remove("hidden");
     clearTimeout(toast._timer);
-    toast._timer = setTimeout(() => element.classList.add("hidden"), 2600);
+    toast._timer = setTimeout(() => el.classList.add("hidden"), 2600);
 }
 function openModal(id) {
     const overlay = $("modal-overlay");
     const modal = $(id);
     if (!overlay || !modal) return;
     overlay.classList.remove("hidden");
-    document.querySelectorAll(".modal").forEach((el) => el.classList.add("hidden"));
+    document.querySelectorAll(".modal").forEach((m) => m.classList.add("hidden"));
     modal.classList.remove("hidden");
 }
 function closeModals() {
     const overlay = $("modal-overlay");
     if (overlay) overlay.classList.add("hidden");
-    document.querySelectorAll(".modal").forEach((el) => el.classList.add("hidden"));
+    document.querySelectorAll(".modal").forEach((m) => m.classList.add("hidden"));
 }
 function escapeHTML(value) {
     const div = document.createElement("div");
@@ -102,11 +101,14 @@ function getCurrentStatus() {
 function getCurrentColor() {
     return userProfile?.accentColor || "#5ee6c4";
 }
+function getCurrentPresence() {
+    return userProfile?.presence || "online";
+}
 function normalizeTimestamp(value) {
     if (typeof value === "number") return value;
     if (typeof value === "string") {
-        const parsed = Number(value);
-        return Number.isNaN(parsed) ? 0 : parsed;
+        const n = Number(value);
+        return Number.isNaN(n) ? 0 : n;
     }
     return 0;
 }
@@ -142,45 +144,26 @@ function createDefaultAvatar(seed = "devcord") {
     }
     const hue = Math.abs(hash) % 360;
     const letter = text.replace(/[^a-zA-Z0-9]/g, "").slice(0, 1).toUpperCase() || "D";
-    const svg = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
-            <defs>
-                <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stop-color="hsl(${hue},70%,55%)"/>
-                    <stop offset="100%" stop-color="hsl(${(hue + 45) % 360},70%,35%)"/>
-                </linearGradient>
-            </defs>
-            <rect width="256" height="256" rx="64" fill="url(#g)"/>
-            <text x="128" y="148" text-anchor="middle" font-family="Arial,sans-serif" font-size="110" font-weight="700" fill="white">${letter}</text>
-        </svg>`;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="hsl(${hue},70%,55%)"/><stop offset="100%" stop-color="hsl(${(hue + 45) % 360},70%,35%)"/></linearGradient></defs><rect width="256" height="256" rx="64" fill="url(#g)"/><text x="128" y="148" text-anchor="middle" font-family="Arial,sans-serif" font-size="110" font-weight="700" fill="white">${letter}</text></svg>`;
     return "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg);
 }
 
 // =====================================================
 // ÍCONES SVG
 // =====================================================
-function statusIcon(type) {
-    const icons = {
-        online: `<svg viewBox="0 0 24 24" aria-hidden="true" class="status-svg"><circle cx="12" cy="12" r="7"/></svg>`,
-        idle: `<svg viewBox="0 0 24 24" aria-hidden="true" class="status-svg"><path d="M12 3a9 9 0 1 0 9 9c0-1-.2-2-.5-2.9A7 7 0 0 1 12 17a7 7 0 0 1-6.9-8.5A9 9 0 0 0 12 3Z"/></svg>`,
-        dnd: `<svg viewBox="0 0 24 24" aria-hidden="true" class="status-svg"><circle cx="12" cy="12" r="8"/><path d="M8 12h8"/></svg>`,
-        offline: `<svg viewBox="0 0 24 24" aria-hidden="true" class="status-svg"><circle cx="12" cy="12" r="8"/><path d="M8 8l8 8M16 8l-8 8"/></svg>`
-    };
-    return icons[type] || icons.online;
-}
 function channelIcon(type) {
     if (type === "voice") {
-        return `<svg viewBox="0 0 24 24" aria-hidden="true" class="channel-svg"><path d="M12 3a4 4 0 0 0-4 4v5a4 4 0 0 0 8 0V7a4 4 0 0 0-4-4Z"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/><path d="M8 21h8"/></svg>`;
+        return `<svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`;
     }
     if (type === "forum") {
-        return `<svg viewBox="0 0 24 24" aria-hidden="true" class="channel-svg"><rect x="3" y="4" width="18" height="15" rx="3"/><path d="M7 8h10"/><path d="M7 12h7"/><path d="M7 16h5"/></svg>`;
+        return `<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="15" rx="3"/><path d="M7 8h10M7 12h7M7 16h5"/></svg>`;
     }
-    return `<svg viewBox="0 0 24 24" aria-hidden="true" class="channel-svg"><path d="M5 5h14"/><path d="M5 12h14"/><path d="M5 19h14"/></svg>`;
+    return `<svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>`;
 }
 function svgIcon(type) {
     const icons = {
-        link: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07.07l2-2a5 5 0 0 0-7.07-7.07l-1.15 1.15"/><path d="M14 11a5 5 0 0 0-7.07-.07l-2 2A5 5 0 0 0 7 20l1.15-1.15"/></svg>`,
-        close: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12"/><path d="m18 6-12 12"/></svg>`
+        link: `<svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.07.07l2-2a5 5 0 0 0-7.07-7.07l-1.15 1.15"/><path d="M14 11a5 5 0 0 0-7.07-.07l-2 2A5 5 0 0 0 7 20l1.15-1.15"/></svg>`,
+        close: `<svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>`
     };
     return icons[type] || icons.link;
 }
@@ -216,12 +199,12 @@ async function safeGet(path) {
 // =====================================================
 // LISTENER HELPERS
 // =====================================================
-function stopListener(listenerObject) {
-    if (!listenerObject) return;
+function stopListener(obj) {
+    if (!obj) return;
     try {
-        off(listenerObject.reference, "value", listenerObject.callback);
-    } catch (error) {
-        console.warn("Não foi possível remover listener:", error);
+        off(obj.reference, "value", obj.callback);
+    } catch (e) {
+        console.warn("Não foi possível remover listener:", e);
     }
 }
 function stopMessagesListener() {
@@ -248,21 +231,24 @@ function stopChannelsListener() {
         channelsListener = null;
     }
 }
+function stopStickersListener() {
+    if (stickersListener) {
+        stopListener(stickersListener);
+        stickersListener = null;
+    }
+}
 
 // =====================================================
 // MODAIS
 // =====================================================
-document.querySelectorAll(".modal-cancel").forEach((button) => {
-    button.addEventListener("click", closeModals);
-});
-if (exists("modal-overlay")) {
-    $("modal-overlay").addEventListener("click", (event) => {
-        if (event.target.id === "modal-overlay") closeModals();
-    });
-}
-document.querySelectorAll("[data-modal-close]").forEach((btn) => {
+document.querySelectorAll(".modal-cancel").forEach((btn) => {
     btn.addEventListener("click", closeModals);
 });
+if (exists("modal-overlay")) {
+    $("modal-overlay").addEventListener("click", (e) => {
+        if (e.target.id === "modal-overlay") closeModals();
+    });
+}
 
 // =====================================================
 // LOGIN
@@ -271,11 +257,12 @@ window.addEventListener("devcord:signed-in", async (event) => {
     try {
         currentUser = event.detail;
         if (!currentUser?.uid) throw new Error("Usuário inválido.");
-        const snapshot = await safeGet(`users/${currentUser.uid}`);
-        userProfile = snapshot.exists() ? snapshot.val() : {};
+        const snap = await safeGet(`users/${currentUser.uid}`);
+        userProfile = snap.exists() ? snap.val() : {};
         renderUserCard();
         listenServers();
-        setPresence("online");
+        listenStickers();
+        setPresence(getCurrentPresence());
     } catch (error) {
         console.error(error);
         toast("Erro ao carregar sua conta.");
@@ -294,6 +281,10 @@ function renderUserCard() {
         $("user-card-name").style.color = getCurrentColor();
     }
     if (exists("user-card-status")) $("user-card-status").textContent = getCurrentStatus();
+    if (exists("user-card-status-dot")) {
+        const dot = $("user-card-status-dot");
+        dot.className = "status-dot status-" + (getCurrentPresence() || "online");
+    }
     if (exists("user-card")) $("user-card").dataset.userId = currentUser.uid;
 }
 
@@ -311,18 +302,18 @@ function listenServers() {
         const value = snapshot.exists() ? snapshot.val() : {};
         const ids = Object.keys(value);
         cleanupRemovedServers(ids);
-        ids.forEach((serverId) => listenServer(serverId));
+        ids.forEach((id) => listenServer(id));
         renderServerList();
     };
     onValue(reference, callback);
     userServersListener = { reference, callback };
 }
 function cleanupRemovedServers(ids) {
-    Object.keys(serverListeners).forEach((serverId) => {
-        if (!ids.includes(serverId)) {
-            stopListener(serverListeners[serverId]);
-            delete serverListeners[serverId];
-            delete serverCache[serverId];
+    Object.keys(serverListeners).forEach((id) => {
+        if (!ids.includes(id)) {
+            stopListener(serverListeners[id]);
+            delete serverListeners[id];
+            delete serverCache[id];
         }
     });
 }
@@ -346,21 +337,21 @@ function renderServerList() {
     const list = $("server-list");
     list.innerHTML = "";
     Object.values(serverCache).forEach((server) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "server-pill" + (server.id === currentServerId ? " active" : "");
-        button.title = server.name || "";
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "server-pill" + (server.id === currentServerId ? " active" : "");
+        btn.title = server.name || "";
         if (server.iconURL) {
-            const image = document.createElement("img");
-            image.src = server.iconURL;
-            image.alt = server.name || "";
-            image.loading = "lazy";
-            button.appendChild(image);
+            const img = document.createElement("img");
+            img.src = server.iconURL;
+            img.alt = server.name || "";
+            img.loading = "lazy";
+            btn.appendChild(img);
         } else {
-            button.textContent = safeName(server.name, "DV").slice(0, 2).toUpperCase();
+            btn.textContent = safeName(server.name, "DV").slice(0, 2).toUpperCase();
         }
-        button.addEventListener("click", () => selectServer(server.id, server));
-        list.appendChild(button);
+        btn.addEventListener("click", () => selectServer(server.id, server));
+        list.appendChild(btn);
     });
 }
 
@@ -382,8 +373,8 @@ if (exists("add-server-btn")) {
 async function joinServerById(serverId) {
     if (!currentUser) return;
     try {
-        const snapshot = await safeGet(`servers/${serverId}`);
-        if (!snapshot.exists()) {
+        const snap = await safeGet(`servers/${serverId}`);
+        if (!snap.exists()) {
             toast("Servidor não encontrado.");
             return;
         }
@@ -419,8 +410,8 @@ if (exists("confirm-create-server")) {
                 try {
                     const base64 = await convertImage(file, { maxWidth: 512, maxHeight: 512, quality: 0.82, maxSizeMB: 5 });
                     await safeUpdate(`servers/${serverId}`, { iconURL: base64 });
-                } catch (imageError) {
-                    console.error(imageError);
+                } catch (err) {
+                    console.error(err);
                     toast("Servidor criado, mas o ícone falhou.");
                 }
             }
@@ -467,10 +458,10 @@ if (exists("home-pill")) {
         if (exists("current-server-name")) $("current-server-name").textContent = "Bem-vindo";
         if (exists("server-settings-btn")) $("server-settings-btn").classList.add("hidden");
         if (exists("channel-groups")) {
-            $("channel-groups").innerHTML = '<p class="empty-hint">Crie ou entre em um servidor para ver os canais aqui.</p>';
+            $("channel-groups").innerHTML = '<p class="empty-hint">Crie ou entre em um servidor pra ver os canais aqui.</p>';
         }
         showView(null);
-        document.querySelectorAll(".server-pill").forEach((pill) => pill.classList.remove("active"));
+        document.querySelectorAll(".server-pill").forEach((p) => p.classList.remove("active"));
         $("home-pill").classList.add("active");
     });
 }
@@ -519,15 +510,15 @@ function renderChannels(groups) {
         const title = document.createElement("span");
         title.textContent = TYPE_LABEL[type];
         label.appendChild(title);
-        const addButton = document.createElement("button");
-        addButton.type = "button";
-        addButton.textContent = "+";
-        addButton.title = "Criar canal";
-        addButton.addEventListener("click", () => {
+        const addBtn = document.createElement("button");
+        addBtn.type = "button";
+        addBtn.textContent = "+";
+        addBtn.title = "Criar canal";
+        addBtn.addEventListener("click", () => {
             openModal("modal-create-channel");
             if (exists("new-channel-type")) $("new-channel-type").value = type;
         });
-        label.appendChild(addButton);
+        label.appendChild(addBtn);
         root.appendChild(label);
         if (!groups[type].length) {
             const empty = document.createElement("p");
@@ -613,15 +604,15 @@ function selectChannel(channel) {
     if (exists("call-btn")) $("call-btn").classList.toggle("hidden", channel.type !== "voice");
 }
 function showView(type) {
-    ["text", "voice", "forum"].forEach((viewType) => {
-        const element = $("view-" + viewType);
-        if (!element) return;
-        element.classList.toggle("hidden", viewType !== type);
+    ["text", "voice", "forum"].forEach((t) => {
+        const el = $("view-" + t);
+        if (!el) return;
+        el.classList.toggle("hidden", t !== type);
     });
 }
 
 // =====================================================
-// MENSAGENS (TEXTO)
+// MENSAGENS
 // =====================================================
 function listenMessages() {
     if (!currentServerId || !currentChannelId) return;
@@ -648,13 +639,13 @@ function listenMessages() {
                     content += `<div class="msg-image"><img src="${escapeAttribute(msg.image)}" alt="imagem" loading="lazy"></div>`;
                 }
                 if (msg.sticker) {
-                    content += `<div class="msg-sticker">${msg.sticker}</div>`;
+                    content += `<div class="msg-sticker"><img src="${escapeAttribute(msg.sticker)}" alt="figurinha" loading="lazy"></div>`;
                 }
                 el.innerHTML = `
                     <img class="avatar avatar-sm" src="${escapeAttribute(photo)}" alt="" loading="lazy" data-user-id="${escapeAttribute(msg.uid || "")}">
                     <div class="message-body">
                         <div class="message-header">
-                            <strong style="color:${escapeAttribute(msg.authorColor || "#5ee6c4")};font-family:${escapeAttribute(msg.authorFont || "Inter")}">${escapeHTML(msg.authorName || "Usuário")}</strong>
+                            <strong style="color:${escapeAttribute(msg.authorColor || "#5ee6c4")};font-family:${escapeAttribute(msg.authorFont || "Inter")}" data-user-id="${escapeAttribute(msg.uid || "")}">${escapeHTML(msg.authorName || "Usuário")}</strong>
                             <span class="meta">${escapeHTML(time)}</span>
                         </div>
                         <div class="message-content">${content}</div>
@@ -726,39 +717,82 @@ if (exists("attach-btn") && exists("file-input")) {
 }
 
 // =====================================================
-// STICKERS (básico)
+// STICKERS (upload Base64)
 // =====================================================
-const STICKERS = ["😀", "😂", "❤️", "🔥", "👍", "🎉", "🚀", "💻", "☕", "🎮"];
+function listenStickers() {
+    if (!currentUser) return;
+    stopStickersListener();
+    const reference = databaseRef(`stickers/${currentUser.uid}`);
+    const callback = (snapshot) => {
+        renderStickerGrid(snapshot.val() || {});
+    };
+    onValue(reference, callback);
+    stickersListener = { reference, callback };
+}
+function renderStickerGrid(data) {
+    const grid = $("sticker-grid");
+    if (!grid) return;
+    grid.innerHTML = "";
+    const entries = Object.entries(data);
+    if (!entries.length) {
+        grid.innerHTML = '<p class="empty-hint" style="grid-column:1/-1">Nenhuma figurinha ainda. Clique no + para adicionar.</p>';
+        return;
+    }
+    entries.forEach(([id, sticker]) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        const img = document.createElement("img");
+        img.src = sticker.url || sticker;
+        img.alt = "figurinha";
+        img.loading = "lazy";
+        btn.appendChild(img);
+        btn.addEventListener("click", async () => {
+            if (!currentServerId || !currentChannelId) return;
+            try {
+                await safePush(`messages/${currentServerId}/${currentChannelId}`, {
+                    uid: currentUser.uid,
+                    authorName: getCurrentDisplayName(),
+                    authorPhoto: userProfile?.photoURL || "",
+                    authorColor: getCurrentColor(),
+                    authorFont: userProfile?.nameFont || "Inter",
+                    sticker: sticker.url || sticker,
+                    text: "",
+                    createdAt: serverTimestamp()
+                });
+                $("sticker-picker")?.classList.add("hidden");
+            } catch (err) {
+                console.error(err);
+                toast("Erro ao enviar figurinha.");
+            }
+        });
+        grid.appendChild(btn);
+    });
+}
 if (exists("sticker-btn") && exists("sticker-picker")) {
     $("sticker-btn").addEventListener("click", () => {
-        const picker = $("sticker-picker");
-        picker.classList.toggle("hidden");
-        if (!picker.classList.contains("hidden") && !picker.children.length) {
-            STICKERS.forEach((s) => {
-                const btn = document.createElement("button");
-                btn.type = "button";
-                btn.textContent = s;
-                btn.addEventListener("click", async () => {
-                    if (!currentServerId || !currentChannelId) return;
-                    try {
-                        await safePush(`messages/${currentServerId}/${currentChannelId}`, {
-                            uid: currentUser.uid,
-                            authorName: getCurrentDisplayName(),
-                            authorPhoto: userProfile?.photoURL || "",
-                            authorColor: getCurrentColor(),
-                            authorFont: userProfile?.nameFont || "Inter",
-                            sticker: s,
-                            text: "",
-                            createdAt: serverTimestamp()
-                        });
-                        picker.classList.add("hidden");
-                    } catch (err) {
-                        console.error(err);
-                        toast("Erro ao enviar figurinha.");
-                    }
-                });
-                picker.appendChild(btn);
+        $("sticker-picker").classList.toggle("hidden");
+    });
+}
+if (exists("sticker-upload-input")) {
+    $("sticker-upload-input").addEventListener("change", async (e) => {
+        const file = e.target.files?.[0];
+        if (!file || !file.type.startsWith("image/")) {
+            toast("Apenas imagens.");
+            e.target.value = "";
+            return;
+        }
+        if (!currentUser) return;
+        try {
+            const base64 = await convertImage(file, { maxWidth: 256, maxHeight: 256, quality: 0.85, maxSizeMB: 2 });
+            await safePush(`stickers/${currentUser.uid}`, {
+                url: base64,
+                createdAt: serverTimestamp()
             });
+            toast("Figurinha adicionada.");
+            e.target.value = "";
+        } catch (err) {
+            console.error(err);
+            toast("Erro ao adicionar figurinha: " + err.message);
         }
     });
 }
@@ -787,7 +821,7 @@ function listenForum() {
             card.className = "forum-post-card";
             const timestamp = normalizeTimestamp(post?.createdAt);
             const time = timestamp ? new Date(timestamp).toLocaleString("pt-BR") : "";
-            const authorPhoto = post?.authorPhoto || createDefaultAvatar(post?.uid || post?.authorName || "user");
+            const authorPhoto = post?.authorPhoto || createDefaultAvatar(post?.uid || "user");
             const body = String(post?.body || "");
             card.innerHTML = `
                 <div class="forum-post-author">
@@ -815,7 +849,7 @@ function openThread(postId, post) {
     if (exists("forum-thread")) $("forum-thread").classList.remove("hidden");
     const timestamp = normalizeTimestamp(post?.createdAt);
     const time = timestamp ? new Date(timestamp).toLocaleString("pt-BR") : "";
-    const authorPhoto = post?.authorPhoto || createDefaultAvatar(post?.uid || post?.authorName || "user");
+    const authorPhoto = post?.authorPhoto || createDefaultAvatar(post?.uid || "user");
     if (exists("forum-thread-content")) {
         $("forum-thread-content").innerHTML = `
             <div class="thread-author">
@@ -845,10 +879,10 @@ function openThread(postId, post) {
         Object.values(value)
             .sort((a, b) => normalizeTimestamp(a?.createdAt) - normalizeTimestamp(b?.createdAt))
             .forEach((reply) => {
-                const element = document.createElement("div");
-                element.className = "thread-reply";
-                const replyPhoto = reply?.authorPhoto || createDefaultAvatar(reply?.uid || reply?.authorName || "user");
-                element.innerHTML = `
+                const el = document.createElement("div");
+                el.className = "thread-reply";
+                const replyPhoto = reply?.authorPhoto || createDefaultAvatar(reply?.uid || "user");
+                el.innerHTML = `
                     <div style="display:flex;gap:9px;align-items:flex-start">
                         <img class="avatar avatar-sm" src="${escapeAttribute(replyPhoto)}" alt="" loading="lazy">
                         <div>
@@ -856,7 +890,7 @@ function openThread(postId, post) {
                             <div>${escapeHTML(reply?.text || "")}</div>
                         </div>
                     </div>`;
-                box.appendChild(element);
+                box.appendChild(el);
             });
     };
     onValue(reference, callback);
@@ -1002,6 +1036,7 @@ function loadProfileFields() {
     if (exists("profile-font-input")) $("profile-font-input").value = userProfile.nameFont || "Inter";
     if (exists("profile-social-input")) $("profile-social-input").value = userProfile.socialLinks || "";
     if (exists("profile-status-input")) $("profile-status-input").value = userProfile.customStatus || "";
+    if (exists("profile-presence-input")) $("profile-presence-input").value = userProfile.presence || "online";
     if (exists("profile-avatar-url-input")) $("profile-avatar-url-input").value = userProfile.photoURL || "";
     if (exists("profile-banner-url-input")) $("profile-banner-url-input").value = userProfile.bannerURL || "";
     if (exists("profile-banner-preview")) {
@@ -1018,11 +1053,11 @@ if (exists("open-profile-btn")) {
     });
 }
 if (exists("profile-avatar-input")) {
-    $("profile-avatar-input").addEventListener("change", (event) => {
-        const file = event.target.files?.[0];
+    $("profile-avatar-input").addEventListener("change", (e) => {
+        const file = e.target.files?.[0];
         if (file && !file.type.startsWith("image/")) {
             toast("O avatar precisa ser uma imagem.");
-            event.target.value = "";
+            e.target.value = "";
             newAvatarFile = null;
             return;
         }
@@ -1033,11 +1068,11 @@ if (exists("profile-avatar-input")) {
     });
 }
 if (exists("profile-banner-input")) {
-    $("profile-banner-input").addEventListener("change", (event) => {
-        const file = event.target.files?.[0];
+    $("profile-banner-input").addEventListener("change", (e) => {
+        const file = e.target.files?.[0];
         if (file && !file.type.startsWith("image/")) {
             toast("O banner precisa ser uma imagem.");
-            event.target.value = "";
+            e.target.value = "";
             newBannerFile = null;
             return;
         }
@@ -1048,14 +1083,14 @@ if (exists("profile-banner-input")) {
     });
 }
 if (exists("profile-avatar-url-input")) {
-    $("profile-avatar-url-input").addEventListener("input", (event) => {
-        const url = event.target.value.trim();
+    $("profile-avatar-url-input").addEventListener("input", (e) => {
+        const url = e.target.value.trim();
         if (url && exists("profile-avatar-preview")) $("profile-avatar-preview").src = url;
     });
 }
 if (exists("profile-banner-url-input")) {
-    $("profile-banner-url-input").addEventListener("input", (event) => {
-        const url = event.target.value.trim();
+    $("profile-banner-url-input").addEventListener("input", (e) => {
+        const url = e.target.value.trim();
         if (!exists("profile-banner-preview")) return;
         $("profile-banner-preview").style.background = url
             ? `url("${escapeAttribute(url)}") center/cover`
@@ -1074,7 +1109,8 @@ if (exists("confirm-profile")) {
             accentColor: $("profile-color-input")?.value || "#5ee6c4",
             nameFont: $("profile-font-input")?.value || "Inter",
             socialLinks: $("profile-social-input")?.value?.trim().slice(0, 500) || "",
-            customStatus: $("profile-status-input")?.value?.trim().slice(0, 32) || ""
+            customStatus: $("profile-status-input")?.value?.trim().slice(0, 32) || "",
+            presence: $("profile-presence-input")?.value || "online"
         };
         try {
             if (newAvatarFile) {
@@ -1106,8 +1142,7 @@ if (exists("confirm-profile")) {
 // PERFIL PÚBLICO
 // =====================================================
 function renderPublicProfile(profile, uid) {
-    const modal = $("modal-public-profile");
-    if (!modal) return;
+    if (!exists("modal-public-profile")) return;
     const data = profile || {};
     const avatar = data.photoURL || createDefaultAvatar(uid || "user");
     const banner = data.bannerURL || "";
@@ -1146,13 +1181,13 @@ function renderPublicProfile(profile, uid) {
     openModal("modal-public-profile");
 }
 document.addEventListener("click", async (event) => {
-    const element = event.target.closest("[data-user-id]");
-    if (!element) return;
-    const uid = element.dataset.userId;
+    const el = event.target.closest("[data-user-id]");
+    if (!el) return;
+    const uid = el.dataset.userId;
     if (!uid) return;
     try {
-        const snapshot = await safeGet(`users/${uid}`);
-        renderPublicProfile(snapshot.exists() ? snapshot.val() : {}, uid);
+        const snap = await safeGet(`users/${uid}`);
+        renderPublicProfile(snap.exists() ? snap.val() : {}, uid);
     } catch (error) {
         console.error(error);
         toast("Não foi possível abrir o perfil.");
@@ -1169,6 +1204,7 @@ if (exists("logout-btn")) {
         stopMessagesListener();
         stopForumPostsListener();
         stopForumRepliesListener();
+        stopStickersListener();
         if (userServersListener) {
             stopListener(userServersListener);
             userServersListener = null;
@@ -1199,10 +1235,16 @@ function setPresence(status) {
     safeUpdate(`users/${currentUser.uid}`, { presence: status, lastSeen: Date.now() })
         .catch((err) => console.warn("Presence:", err));
 }
-window.addEventListener("focus", () => setPresence("online"));
-window.addEventListener("blur", () => setPresence("idle"));
+window.addEventListener("focus", () => setPresence(getCurrentPresence() || "online"));
+window.addEventListener("blur", () => {
+    if (getCurrentPresence() === "online") setPresence("idle");
+});
 document.addEventListener("visibilitychange", () => {
-    setPresence(document.visibilityState === "visible" ? "online" : "idle");
+    if (document.visibilityState === "visible") {
+        setPresence(getCurrentPresence() || "online");
+    } else if (getCurrentPresence() === "online") {
+        setPresence("idle");
+    }
 });
 document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
