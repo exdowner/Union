@@ -1,3 +1,4 @@
+/* ---------- Forum Post Card / Componentes ---------- */
 .forum-post-card:hover {
   border-color: var(--accent-dim);
   box-shadow: var(--shadow-md);
