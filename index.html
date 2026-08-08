@@ -4,19 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#0e1013">
-    <title>DevCord</title>
+    <title>Union Chat</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-theme="dark">
     <!-- AUTH -->
     <div id="auth-screen" class="auth-screen">
         <div class="auth-card">
             <div class="auth-brand">
-                <div class="auth-logo">DC</div>
-                <h1>DevCord</h1>
-                <p>Seu cantinho pra conversar, ligar e criar comunidades.</p>
+                <div class="auth-logo">UC</div>
+                <h1>Union Chat</h1>
+                <p>Seu espaço para conversar, criar comunidades e ficar conectado.</p>
             </div>
             <div class="auth-tabs">
                 <button type="button" class="auth-tab active" data-tab="login">Entrar</button>
@@ -50,8 +50,8 @@
 
     <!-- APP -->
     <div id="app" class="app hidden">
-        <nav class="server-rail" id="server-rail" aria-label="Servidores">
-            <button type="button" class="server-pill server-pill-home active" id="home-pill" title="Início">DC</button>
+        <nav class="server-rail" id="server-rail">
+            <button type="button" class="server-pill server-pill-home active" id="home-pill" title="Início">UC</button>
             <div class="server-divider"></div>
             <div class="server-list" id="server-list"></div>
             <button type="button" class="server-pill server-pill-add" id="add-server-btn" title="Criar servidor">
@@ -67,7 +67,7 @@
                 </button>
             </div>
             <div class="channel-groups" id="channel-groups">
-                <p class="empty-hint">Crie ou entre em um servidor pra ver os canais aqui.</p>
+                <p class="empty-hint">Crie ou entre em um servidor para ver os canais aqui.</p>
             </div>
             <div class="user-card" id="user-card">
                 <div class="user-card-avatar-wrap">
@@ -88,38 +88,62 @@
             <header class="main-header">
                 <span id="channel-title"># selecione-um-canal</span>
                 <div class="main-header-actions">
-                    <button type="button" id="call-btn" class="icon-btn hidden" title="Chamada de voz/vídeo">
+                    <button type="button" id="theme-btn" class="icon-btn" title="Tema">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                    </button>
+                    <button type="button" id="call-btn" class="icon-btn hidden" title="Chamada">
                         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
                     </button>
                 </div>
             </header>
 
+            <!-- CHAT -->
             <section id="view-text" class="view">
                 <div class="messages" id="messages"></div>
+                <div id="attach-preview" class="attach-preview hidden"></div>
                 <form id="message-form" class="message-form">
                     <button type="button" id="attach-btn" class="icon-btn" title="Anexar imagem">
                         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
                     </button>
                     <input type="file" id="file-input" accept="image/*" class="hidden">
-                    <button type="button" id="sticker-btn" class="icon-btn" title="Figurinhas">
-                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+                    <button type="button" id="sticker-btn" class="icon-btn" title="Figurinhas e emojis">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+                    </button>
+                    <button type="button" id="record-btn" class="icon-btn" title="Gravar áudio">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
                     </button>
                     <input type="text" id="message-input" placeholder="Mandar mensagem..." autocomplete="off" maxlength="2000">
                     <button type="submit" class="btn-primary btn-send">Enviar</button>
                 </form>
+
+                <!-- Picker com abas -->
                 <div id="sticker-picker" class="sticker-picker hidden">
-                    <div class="sticker-picker-header">
-                        <span>Figurinhas</span>
-                        <label class="sticker-upload-btn" title="Adicionar figurinha">
-                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
-                            <input type="file" id="sticker-upload-input" accept="image/*" class="hidden">
-                        </label>
+                    <div class="picker-tabs">
+                        <button type="button" class="picker-tab active" data-picker="stickers">Figurinhas</button>
+                        <button type="button" class="picker-tab" data-picker="emojis">Emojis</button>
                     </div>
-                    <div id="sticker-grid" class="sticker-grid"></div>
+                    <div id="picker-stickers" class="picker-panel">
+                        <div class="sticker-picker-header">
+                            <span>Suas figurinhas</span>
+                            <div class="sticker-actions">
+                                <label class="upload-btn-sm" title="Upload">
+                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                    <input type="file" id="sticker-upload-input" accept="image/*" class="hidden">
+                                </label>
+                                <button type="button" id="sticker-url-btn" class="upload-btn-sm" title="URL">
+                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.07.07l2-2a5 5 0 0 0-7.07-7.07l-1.15 1.15"/><path d="M14 11a5 5 0 0 0-7.07-.07l-2 2A5 5 0 0 0 7 20l1.15-1.15"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="sticker-grid" class="sticker-grid"></div>
+                    </div>
+                    <div id="picker-emojis" class="picker-panel hidden">
+                        <div id="emoji-grid" class="emoji-grid"></div>
+                    </div>
                 </div>
-                <div id="attach-preview" class="attach-preview hidden"></div>
             </section>
 
+            <!-- VOZ -->
             <section id="view-voice" class="view hidden">
                 <div class="voice-stage">
                     <h2 id="voice-channel-name">Canal de voz</h2>
@@ -127,7 +151,7 @@
                     <div class="voice-controls">
                         <button type="button" id="join-voice-btn" class="btn-primary">Entrar no canal de voz</button>
                         <button type="button" id="leave-voice-btn" class="btn-secondary hidden">Sair</button>
-                        <button type="button" id="toggle-mic-btn" class="icon-btn hidden" title="Mutar/desmutar">
+                        <button type="button" id="toggle-mic-btn" class="icon-btn hidden" title="Microfone">
                             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
                         </button>
                         <button type="button" id="toggle-cam-btn" class="icon-btn hidden" title="Câmera">
@@ -138,6 +162,7 @@
                 </div>
             </section>
 
+            <!-- FÓRUM -->
             <section id="view-forum" class="view hidden">
                 <div class="forum-toolbar">
                     <button type="button" id="new-post-btn" class="btn-primary">Novo tópico</button>
@@ -151,19 +176,70 @@
                     <div id="forum-thread-content"></div>
                 </div>
             </section>
+
+            <!-- CONFIGURAÇÕES DO SERVIDOR (tela cheia) -->
+            <section id="view-server-settings" class="view hidden">
+                <div class="server-settings-wrap">
+                    <div class="server-settings-header">
+                        <button type="button" id="back-from-server-settings" class="btn-secondary">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                            Voltar
+                        </button>
+                        <h2>Configurações do servidor</h2>
+                    </div>
+                    <div class="server-settings-tabs">
+                        <button type="button" class="settings-tab active" data-stab="overview">Visão geral</button>
+                        <button type="button" class="settings-tab" data-stab="roles">Cargos</button>
+                        <button type="button" class="settings-tab" data-stab="members">Membros</button>
+                        <button type="button" class="settings-tab" data-stab="bans">Banimentos</button>
+                    </div>
+                    <div id="stab-overview" class="settings-panel">
+                        <div class="server-banner-preview" id="server-banner-preview"></div>
+                        <div class="server-icon-preview-wrap">
+                            <img id="server-icon-preview" class="server-icon-preview" src="" alt="">
+                        </div>
+                        <label>Nome do servidor
+                            <input type="text" id="server-name-edit" maxlength="40">
+                        </label>
+                        <label class="upload-label">
+                            <span class="upload-btn">Trocar ícone</span>
+                            <input type="file" id="server-icon-edit" accept="image/*" class="hidden">
+                        </label>
+                        <label class="upload-label">
+                            <span class="upload-btn">Trocar banner</span>
+                            <input type="file" id="server-banner-edit" accept="image/*" class="hidden">
+                        </label>
+                        <label>Link de convite
+                            <input type="text" id="server-invite-link" readonly>
+                        </label>
+                        <button type="button" class="btn-primary" id="save-server-overview">Salvar</button>
+                        <button type="button" class="btn-secondary danger-btn hidden" id="delete-server-btn">Excluir servidor (somente dono)</button>
+                    </div>
+                    <div id="stab-roles" class="settings-panel hidden">
+                        <button type="button" class="btn-primary" id="create-role-btn">Criar cargo</button>
+                        <div id="roles-list"></div>
+                    </div>
+                    <div id="stab-members" class="settings-panel hidden">
+                        <div id="members-list"></div>
+                    </div>
+                    <div id="stab-bans" class="settings-panel hidden">
+                        <div id="bans-list"></div>
+                    </div>
+                </div>
+            </section>
         </main>
     </div>
 
     <!-- MODAIS -->
     <div class="modal-overlay hidden" id="modal-overlay">
-        <!-- Criar servidor -->
         <div class="modal hidden" id="modal-create-server">
             <h2>Criar servidor</h2>
             <label>Nome do servidor
                 <input type="text" id="new-server-name" maxlength="40" placeholder="Ex: Galera do Código">
             </label>
-            <label>Ícone (opcional)
-                <input type="file" id="new-server-icon" accept="image/*">
+            <label class="upload-label">
+                <span class="upload-btn">Escolher ícone</span>
+                <input type="file" id="new-server-icon" accept="image/*" class="hidden">
             </label>
             <div class="modal-actions">
                 <button type="button" class="btn-secondary modal-cancel">Cancelar</button>
@@ -171,7 +247,6 @@
             </div>
         </div>
 
-        <!-- Criar canal -->
         <div class="modal hidden" id="modal-create-channel">
             <h2>Criar canal</h2>
             <label>Nome do canal
@@ -190,23 +265,24 @@
             </div>
         </div>
 
-        <!-- Perfil -->
         <div class="modal modal-profile hidden" id="modal-profile">
             <h2>Seu perfil</h2>
             <div class="profile-edit-preview">
                 <div class="profile-banner" id="profile-banner-preview"></div>
                 <img id="profile-avatar-preview" class="avatar avatar-lg" src="" alt="">
             </div>
-            <label>Foto de perfil
-                <input type="file" id="profile-avatar-input" accept="image/*">
+            <label class="upload-label">
+                <span class="upload-btn">Trocar foto</span>
+                <input type="file" id="profile-avatar-input" accept="image/*" class="hidden">
             </label>
-            <label>URL da foto (opcional)
+            <label>URL da foto
                 <input type="url" id="profile-avatar-url-input" placeholder="https://...">
             </label>
-            <label>Banner
-                <input type="file" id="profile-banner-input" accept="image/*">
+            <label class="upload-label">
+                <span class="upload-btn">Trocar banner</span>
+                <input type="file" id="profile-banner-input" accept="image/*" class="hidden">
             </label>
-            <label>URL do banner (opcional)
+            <label>URL do banner
                 <input type="url" id="profile-banner-url-input" placeholder="https://...">
             </label>
             <label>Nome de exibição
@@ -237,6 +313,9 @@
                     <option value="cursive">Cursiva</option>
                 </select>
             </label>
+            <label>Tags
+                <div id="profile-tags-list" class="tags-list"></div>
+            </label>
             <label>Redes sociais
                 <input type="text" id="profile-social-input" placeholder="instagram.com/seuuser, github.com/seuuser">
             </label>
@@ -247,7 +326,6 @@
             <button type="button" class="btn-secondary logout-btn" id="logout-btn">Sair da conta</button>
         </div>
 
-        <!-- Novo tópico -->
         <div class="modal hidden" id="modal-new-post">
             <h2>Novo tópico</h2>
             <label>Título
@@ -262,16 +340,39 @@
             </div>
         </div>
 
-        <!-- Perfil público -->
         <div class="modal modal-public-profile hidden" id="modal-public-profile">
             <div class="public-profile-banner" id="public-profile-banner"></div>
             <img id="public-profile-avatar" class="avatar avatar-lg" src="" alt="">
             <h2 id="public-profile-name">—</h2>
             <p id="public-profile-status" class="public-status">Online</p>
             <p id="public-profile-bio" class="public-bio">Sem biografia.</p>
+            <div id="public-profile-tags" class="tags-list"></div>
             <div id="public-profile-socials" class="public-socials"></div>
             <div class="modal-actions">
                 <button type="button" class="btn-secondary modal-cancel">Fechar</button>
+            </div>
+        </div>
+
+        <div class="modal hidden" id="modal-theme">
+            <h2>Tema</h2>
+            <div class="theme-options">
+                <button type="button" class="theme-option active" data-theme="dark">Escuro</button>
+                <button type="button" class="theme-option" data-theme="light">Claro</button>
+                <button type="button" class="theme-option" data-theme="oled">OLED</button>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary modal-cancel">Fechar</button>
+            </div>
+        </div>
+
+        <div class="modal hidden" id="modal-sticker-url">
+            <h2>Adicionar figurinha por URL</h2>
+            <label>URL da imagem
+                <input type="url" id="sticker-url-input" placeholder="https://...">
+            </label>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary modal-cancel">Cancelar</button>
+                <button type="button" class="btn-primary" id="confirm-sticker-url">Adicionar</button>
             </div>
         </div>
     </div>
