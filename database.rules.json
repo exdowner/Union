@@ -1,16 +1,36 @@
 {
   "rules": {
     "users": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid",
+        "$field": {
+          ".validate": "newData.isString() == false || newData.val().length <= 5000"
+        }
+      }
+    },
+
+    "presence": {
       "$uid": {
         ".read": "auth != null",
-        ".write": "auth != null && auth.uid === $uid"
+        ".write": "auth.uid === $uid"
+      }
+    },
+
+    "friends": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$friendUid": {
+          ".write": "auth != null && auth.uid === $uid",
+          ".validate": "newData.hasChildren(['status']) && newData.child('status').val() in ['friend','blocked','request_sent','request_in','blocked_by']"
+        }
       }
     },
 
     "servers": {
       ".read": "auth != null",
       "$serverId": {
-        ".write": "auth != null && (!data.exists() || data.child('ownerId').val() === auth.uid || root.child('serverMembers').child($serverId).child(auth.uid).exists())"
+        ".write": "auth != null && (!data.exists() || data.child('ownerId').val() === auth.uid)"
       }
     },
 
@@ -18,7 +38,7 @@
       "$serverId": {
         ".read": "auth != null",
         "$uid": {
-          ".write": "auth != null && auth.uid === $uid"
+          ".write": "auth != null && (auth.uid === $uid || root.child('servers').child($serverId).child('ownerId').val() === auth.uid)"
         }
       }
     },
@@ -33,15 +53,37 @@
     "channels": {
       "$serverId": {
         ".read": "auth != null",
-        ".write": "auth != null && root.child('serverMembers').child($serverId).child(auth.uid).exists()"
+        "$channelId": {
+          ".write": "auth != null && root.child('servers').child($serverId).child('ownerId').val() === auth.uid",
+          ".validate": "newData.hasChildren(['name','type','createdAt'])"
+        }
+      }
+    },
+
+    "channelMeta": {
+      "$serverId": {
+        ".read": "auth != null",
+        "$channelId": {
+          ".write": "auth != null && root.child('serverMembers').child($serverId).child(auth.uid).exists()"
+        }
       }
     },
 
     "messages": {
       "$serverId": {
         "$channelId": {
-          ".read": "auth != null",
-          ".write": "auth != null && root.child('serverMembers').child($serverId).child(auth.uid).exists()"
+          ".read": "auth != null && root.child('serverMembers').child($serverId).child(auth.uid).exists()",
+          "$msgId": {
+            ".write": "auth != null && root.child('serverMembers').child($serverId).child(auth.uid).exists() && ((!data.exists() && newData.hasChild('uid') && newData.child('uid').val() === auth.uid) || (data.hasChild('uid') && data.child('uid').val() === auth.uid) || root.child('servers').child($serverId).child('ownerId').val() === auth.uid || root.child('serverMembers').child($serverId).child(auth.uid).child('roles').child('admin').exists())",
+            "reactions": {
+              "$emoji": {
+                "$uid": {
+                  ".write": "auth != null && auth.uid === $uid",
+                  ".validate": "newData.val() === true"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -49,8 +91,10 @@
     "posts": {
       "$serverId": {
         "$channelId": {
-          ".read": "auth != null",
-          ".write": "auth != null && root.child('serverMembers').child($serverId).child(auth.uid).exists()"
+          ".read": "auth != null && root.child('serverMembers').child($serverId).child(auth.uid).exists()",
+          "$postId": {
+            ".write": "auth != null && root.child('serverMembers').child($serverId).child(auth.uid).exists() && ((!data.exists() && newData.hasChild('uid') && newData.child('uid').val() === auth.uid) || (data.hasChild('uid') && data.child('uid').val() === auth.uid) || root.child('servers').child($serverId).child('ownerId').val() === auth.uid || root.child('serverMembers').child($serverId).child(auth.uid).child('roles').child('admin').exists())"
+          }
         }
       }
     },
@@ -59,8 +103,53 @@
       "$serverId": {
         "$channelId": {
           "$postId": {
+            ".read": "auth != null && root.child('serverMembers').child($serverId).child(auth.uid).exists()",
+            "$replyId": {
+              ".write": "auth != null && root.child('serverMembers').child($serverId).child(auth.uid).exists() && ((!data.exists() && newData.hasChild('uid') && newData.child('uid').val() === auth.uid) || (data.hasChild('uid') && data.child('uid').val() === auth.uid))"
+            }
+          }
+        }
+      }
+    },
+
+    "pins": {
+      "$serverId": {
+        "$channelId": {
+          "$msgId": {
             ".read": "auth != null",
             ".write": "auth != null && root.child('serverMembers').child($serverId).child(auth.uid).exists()"
+          }
+        }
+      }
+    },
+
+    "saved": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+
+    "gifFavs": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+
+    "reads": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+
+    "typing": {
+      "$serverId": {
+        "$channelId": {
+          "$uid": {
+            ".read": "auth != null",
+            ".write": "auth != null && auth.uid === $uid"
           }
         }
       }
@@ -87,6 +176,67 @@
     "calls": {
       ".read": "auth != null",
       ".write": "auth != null"
+    },
+
+    "callChats": {
+      "$callKey": {
+        ".read": "auth != null",
+        "$msgId": {
+          ".write": "auth != null && newData.hasChild('uid') && newData.child('uid').val() === auth.uid"
+        }
+      }
+    },
+
+    "dmsMembers": {
+      "$pairKey": {
+        "$uid": {
+          ".write": "auth != null && auth.uid === $uid"
+        }
+      }
+    },
+
+    "dms": {
+      "$pairKey": {
+        ".read": "auth != null && root.child('dmsMembers').child($pairKey).child(auth.uid).exists()",
+        ".write": "auth != null && root.child('dmsMembers').child($pairKey).child(auth.uid).exists()",
+        "messages": {
+          "$msgId": {
+            ".write": "auth != null && root.child('dmsMembers').child($pairKey).child(auth.uid).exists() && newData.hasChild('uid') && newData.child('uid').val() === auth.uid"
+          }
+        }
+      }
+    },
+
+    "dmsMeta": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+
+    "notifications": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+
+    "serverBans": {
+      "$serverId": {
+        "$uid": {
+          ".read": "auth != null",
+          ".write": "auth != null && (root.child('servers').child($serverId).child('ownerId').val() === auth.uid || root.child('serverMembers').child($serverId).child(auth.uid).child('roles').child('admin').exists())"
+        }
+      }
+    },
+
+    "serverMutes": {
+      "$serverId": {
+        "$uid": {
+          ".read": "auth != null",
+          ".write": "auth != null && (root.child('servers').child($serverId).child('ownerId').val() === auth.uid || root.child('serverMembers').child($serverId).child(auth.uid).child('roles').child('admin').exists())"
+        }
+      }
     }
   }
 }

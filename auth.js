@@ -1,116 +1,297 @@
-// auth.js — cadastro, login, logout e criação do perfil no Realtime Database
-import {
-  auth, rtdb,
-  onAuthStateChanged,
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  updateProfile,
-  serverTimestamp,
-} from "./firebase-config.js";
-import { ref, set, get } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-database.js";
+{
+  "rules": {
+    "users": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid",
+        "photoBase64": {
+          ".validate": "newData.isString() && newData.val().length <= 280000"
+        },
+        "$field": {
+          ".validate": "newData.isString() == false || newData.val().length <= 5000"
+        }
+      }
+    },
 
-const authScreen = document.getElementById("auth-screen");
-const appRoot = document.getElementById("app");
+    "presence": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
 
-const tabs = document.querySelectorAll(".auth-tab");
-const loginForm = document.getElementById("login-form");
-const registerForm = document.getElementById("register-form");
+    "friends": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$friendUid": {
+          ".write": "auth != null && auth.uid === $uid",
+          ".validate": "newData.hasChildren(['status']) && newData.child('status').val() in ['friend','blocked','request_sent','request_in','blocked_by']"
+        }
+      }
+    },
 
-tabs.forEach((tab) => {
-  tab.addEventListener("click", () => {
-    tabs.forEach((t) => t.classList.remove("active"));
-    tab.classList.add("active");
-    if (tab.dataset.tab === "login") {
-      loginForm.classList.remove("hidden");
-      registerForm.classList.add("hidden");
-    } else {
-      registerForm.classList.remove("hidden");
-      loginForm.classList.add("hidden");
+    "servers": {
+      ".read": "auth != null",
+      "$serverId": {
+        ".write": "auth != null && (!data.exists() || data.child('ownerId').val() === auth.uid)",
+        "iconBase64": {
+          ".validate": "newData.isString() && newData.val().length <= 280000"
+        }
+      }
+    },
+
+    "serverMembers": {
+      "$serverId": {
+        ".read": "auth != null",
+        "$uid": {
+          ".write": "auth != null && (auth.uid === $uid || root.child('servers').child($serverId).child('ownerId').val() === auth.uid)"
+        }
+      }
+    },
+
+    "userServers": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+
+    "channels": {
+      "$serverId": {
+        ".read": "auth != null",
+        "$channelId": {
+          ".write": "auth != null && (root.child('servers').child($serverId).child('ownerId').val() === auth.uid || root.child('serverMembers').child($serverId).child(auth.uid).child('roles').child('admin').exists())",
+          ".validate": "newData.hasChildren(['name','type','createdAt'])"
+        }
+      }
+    },
+
+    "channelMeta": {
+      "$serverId": {
+        ".read": "auth != null",
+        "$channelId": {
+          ".write": "auth != null && (root.child('servers').child($serverId).child('ownerId').val() === auth.uid || root.child('serverMembers').child($serverId).child(auth.uid).child('roles').child('admin').exists())"
+        }
+      }
+    },
+
+    "messages": {
+      "$serverId": {
+        "$channelId": {
+          ".read": "auth != null && root.child('serverMembers').child($serverId).child(auth.uid).exists()",
+          "$msgId": {
+            ".write": "auth != null && root.child('serverMembers').child($serverId).child(auth.uid).exists() && ((!data.exists() && newData.hasChild('uid') && newData.child('uid').val() === auth.uid) || (data.hasChild('uid') && data.child('uid').val() === auth.uid) || root.child('servers').child($serverId).child('ownerId').val() === auth.uid || root.child('serverMembers').child($serverId).child(auth.uid).child('roles').child('admin').exists())",
+            ".validate": "(!newData.hasChild('imageBase64')) || (newData.child('imageBase64').isString() && newData.child('imageBase64').val().length <= 280000 && newData.child('contentType').isString() && newData.child('contentType').val().matches('^image/'))",
+            "reactions": {
+              "$emoji": {
+                "$uid": {
+                  ".write": "auth != null && auth.uid === $uid",
+                  ".validate": "newData.val() === true"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "posts": {
+      "$serverId": {
+        "$channelId": {
+          ".read": "auth != null && root.child('serverMembers').child($serverId).child(auth.uid).exists()",
+          "$postId": {
+            ".write": "auth != null && root.child('serverMembers').child($serverId).child(auth.uid).exists() && ((!data.exists() && newData.hasChild('uid') && newData.child('uid').val() === auth.uid) || (data.hasChild('uid') && data.child('uid').val() === auth.uid) || root.child('servers').child($serverId).child('ownerId').val() === auth.uid || root.child('serverMembers').child($serverId).child(auth.uid).child('roles').child('admin').exists())"
+          }
+        }
+      }
+    },
+
+    "replies": {
+      "$serverId": {
+        "$channelId": {
+          "$postId": {
+            ".read": "auth != null && root.child('serverMembers').child($serverId).child(auth.uid).exists()",
+            "$replyId": {
+              ".write": "auth != null && root.child('serverMembers').child($serverId).child(auth.uid).exists() && ((!data.exists() && newData.hasChild('uid') && newData.child('uid').val() === auth.uid) || (data.hasChild('uid') && data.child('uid').val() === auth.uid) || root.child('servers').child($serverId).child('ownerId').val() === auth.uid || root.child('serverMembers').child($serverId).child(auth.uid).child('roles').child('admin').exists())"
+            }
+          }
+        }
+      }
+    },
+
+    "pins": {
+      "$serverId": {
+        "$channelId": {
+          "$msgId": {
+            ".read": "auth != null",
+            ".write": "auth != null && (root.child('servers').child($serverId).child('ownerId').val() === auth.uid || root.child('serverMembers').child($serverId).child(auth.uid).child('roles').child('admin').exists())"
+          }
+        }
+      }
+    },
+
+    "saved": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+
+    "gifFavs": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+
+    "stickerFavs": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+
+    "emojiFavs": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+
+    "reads": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+
+    "typing": {
+      "dms": {
+        "$pairKey": {
+          "$uid": {
+            ".read": "auth != null && root.child('dmsMembers').child($pairKey).child(auth.uid).exists()",
+            ".write": "auth != null && auth.uid === $uid"
+          }
+        }
+      },
+      "$serverId": {
+        "$channelId": {
+          "$uid": {
+            ".read": "auth != null && root.child('serverMembers').child($serverId).child(auth.uid).exists()",
+            ".write": "auth != null && auth.uid === $uid"
+          }
+        }
+      }
+    },
+
+    "stickers": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+
+    "voicePresence": {
+      "$serverId": {
+        "$channelId": {
+          ".read": "auth != null",
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid"
+          }
+        }
+      }
+    },
+
+    "calls": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+
+    "callChats": {
+      "$callKey": {
+        ".read": "auth != null",
+        "$msgId": {
+          ".write": "auth != null && newData.hasChild('uid') && newData.child('uid').val() === auth.uid"
+        }
+      }
+    },
+
+    "dmsMembers": {
+      "$pairKey": {
+        "$uid": {
+          ".read": "auth != null && root.child('dmsMembers').child($pairKey).child(auth.uid).exists()",
+          ".write": "auth != null && auth.uid === $uid"
+        }
+      }
+    },
+
+    "dms": {
+      "$pairKey": {
+        ".read": "auth != null && root.child('dmsMembers').child($pairKey).child(auth.uid).exists()",
+        ".write": "auth != null && root.child('dmsMembers').child($pairKey).child(auth.uid).exists()",
+        "messages": {
+          "$msgId": {
+            ".write": "auth != null && root.child('dmsMembers').child($pairKey).child(auth.uid).exists() && ((!data.exists() && newData.hasChild('uid') && newData.child('uid').val() === auth.uid) || (data.hasChild('uid') && data.child('uid').val() === auth.uid))",
+            ".validate": "(!newData.hasChild('imageBase64')) || (newData.child('imageBase64').isString() && newData.child('imageBase64').val().length <= 280000 && newData.child('contentType').isString() && newData.child('contentType').val().matches('^image/'))",
+            "reactions": {
+              "$emoji": {
+                "$uid": {
+                  ".write": "auth != null && auth.uid === $uid",
+                  ".validate": "newData.val() === true"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "dmsMeta": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+
+    "notifications": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+
+    "serverBans": {
+      "$serverId": {
+        "$uid": {
+          ".read": "auth != null && root.child('serverMembers').child($serverId).child(auth.uid).exists()",
+          ".write": "auth != null && (root.child('servers').child($serverId).child('ownerId').val() === auth.uid || root.child('serverMembers').child($serverId).child(auth.uid).child('roles').child('admin').exists())"
+        }
+      }
+    },
+
+    "serverMutes": {
+      "$serverId": {
+        "$uid": {
+          ".read": "auth != null && root.child('serverMembers').child($serverId).child(auth.uid).exists()",
+          ".write": "auth != null && (root.child('servers').child($serverId).child('ownerId').val() === auth.uid || root.child('serverMembers').child($serverId).child(auth.uid).child('roles').child('admin').exists())"
+        }
+      }
+    },
+
+    "reports": {
+      "$reportId": {
+        ".write": "auth != null",
+        ".validate": "newData.hasChildren(['type', 'reporterUid', 'targetId', 'timestamp']) && newData.child('reporterUid').val() === auth.uid"
+      }
+    },
+
+    "modLogs": {
+      "$serverId": {
+        ".read": "auth != null && (root.child('servers').child($serverId).child('ownerId').val() === auth.uid || root.child('serverMembers').child($serverId).child(auth.uid).child('roles').child('admin').exists())",
+        "$logId": {
+          ".write": "auth != null && (root.child('servers').child($serverId).child('ownerId').val() === auth.uid || root.child('serverMembers').child($serverId).child(auth.uid).child('roles').child('admin').exists())"
+        }
+      }
     }
-  });
-});
-
-loginForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const email = document.getElementById("login-email").value.trim();
-  const password = document.getElementById("login-password").value;
-  const errorEl = document.getElementById("login-error");
-  errorEl.textContent = "";
-  try {
-    await signInWithEmailAndPassword(auth, email, password);
-  } catch (err) {
-    errorEl.textContent = traduzErro(err.code);
   }
-});
-
-registerForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const name = document.getElementById("register-name").value.trim();
-  const email = document.getElementById("register-email").value.trim();
-  const password = document.getElementById("register-password").value;
-  const errorEl = document.getElementById("register-error");
-  errorEl.textContent = "";
-  try {
-    const cred = await createUserWithEmailAndPassword(auth, email, password);
-    await updateProfile(cred.user, { displayName: name });
-    await set(ref(rtdb, `users/${cred.user.uid}`), {
-      displayName: name,
-      email,
-      photoURL: "",
-      bannerURL: "",
-      bio: "",
-      accentColor: "#5ee6c4",
-      nameFont: "Inter",
-      socialLinks: "",
-      customStatus: "Online",
-      createdAt: serverTimestamp(),
-    });
-  } catch (err) {
-    errorEl.textContent = traduzErro(err.code);
-  }
-});
-
-function traduzErro(code) {
-  const map = {
-    "auth/email-already-in-use": "Esse email já está cadastrado.",
-    "auth/invalid-email": "Email inválido.",
-    "auth/weak-password": "Senha muito fraca (mínimo 6 caracteres).",
-    "auth/invalid-credential": "Email ou senha incorretos.",
-    "auth/user-not-found": "Usuário não encontrado.",
-    "auth/wrong-password": "Senha incorreta.",
-  };
-  return map[code] || "Ocorreu um erro. Tente novamente.";
 }
-
-// Garante que o perfil existe (para contas antigas/edge cases)
-export async function ensureUserDoc(user) {
-  const uRef = ref(rtdb, `users/${user.uid}`);
-  const snap = await get(uRef);
-  if (!snap.exists()) {
-    await set(uRef, {
-      displayName: user.displayName || "Novo usuário",
-      email: user.email,
-      photoURL: user.photoURL || "",
-      bannerURL: "",
-      bio: "",
-      accentColor: "#5ee6c4",
-      nameFont: "Inter",
-      socialLinks: "",
-      customStatus: "Online",
-      createdAt: serverTimestamp(),
-    });
-  }
-  return (await get(uRef)).val();
-}
-
-onAuthStateChanged(auth, async (user) => {
-  if (user) {
-    await ensureUserDoc(user);
-    authScreen.classList.add("hidden");
-    appRoot.classList.remove("hidden");
-    window.dispatchEvent(new CustomEvent("devcord:signed-in", { detail: user }));
-  } else {
-    appRoot.classList.add("hidden");
-    authScreen.classList.remove("hidden");
-  }
-});

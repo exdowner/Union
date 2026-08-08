@@ -112,8 +112,10 @@ export async function appendLinkCards(container, text) {
     card.setAttribute("aria-label", "Abrir link externo em nova aba");
 
     const p = await getLinkPreview(url);
-    let mediaHtml = "";
+    
     if (p.type === "image") {
+      const mediaWrap = document.createElement("div");
+      mediaWrap.className = "lc-media";
       const img = document.createElement("img");
       img.src = p.url;
       img.loading = "lazy";
@@ -122,35 +124,60 @@ export async function appendLinkCards(container, text) {
         e.preventDefault(); e.stopPropagation();
         openLightbox(p.url, "img");
       });
-      mediaHtml = `<div class="lc-media"></div>`;
-      mediaHtml && (() => { const w = card.querySelector(".lc-media"); if (w) w.appendChild(img); })();
+      mediaWrap.appendChild(img);
+      card.appendChild(mediaWrap);
     } else if (p.type === "video") {
-      mediaHtml = `<div class="lc-media"><video src="${p.url}" controls playsinline preload="metadata"></video></div>`;
+      const mediaWrap = document.createElement("div");
+      mediaWrap.className = "lc-media";
+      const vid = document.createElement("video");
+      vid.src = p.url;
+      vid.controls = true;
+      vid.playsInline = true;
+      vid.preload = "metadata";
+      mediaWrap.appendChild(vid);
+      card.appendChild(mediaWrap);
     } else if (p.thumb) {
-      mediaHtml = `<div class="lc-media"><img src="${p.thumb}" loading="lazy" alt="" /><div class="lc-play"><div class="play-badge" aria-hidden="true"><svg class="svg-icon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></div></div></div>`;
+      const mediaWrap = document.createElement("div");
+      mediaWrap.className = "lc-media";
+      const img = document.createElement("img");
+      img.src = p.thumb;
+      img.loading = "lazy";
+      img.alt = "";
+      mediaWrap.appendChild(img);
+
+      const playDiv = document.createElement("div");
+      playDiv.className = "lc-play";
+      const playBadge = document.createElement("div");
+      playBadge.className = "play-badge";
+      playBadge.setAttribute("aria-hidden", "true");
+      playBadge.innerHTML = '<svg class="svg-icon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+      playDiv.appendChild(playBadge);
+      mediaWrap.appendChild(playDiv);
+
+      card.appendChild(mediaWrap);
     }
 
     const body = document.createElement("div");
     body.className = "lc-body";
+    
     const t = document.createElement("div");
     t.className = "lc-title";
     t.textContent = p.title || p.host;
+    
     const d = document.createElement("div");
     d.className = "lc-desc";
     d.textContent = p.author ? `${p.author} · Clique para abrir o link` : "Clique para abrir o link";
+    
     const site = document.createElement("div");
     site.className = "lc-site";
     site.innerHTML = '<svg class="svg-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>';
     site.appendChild(document.createTextNode(p.host));
-    body.appendChild(t); body.appendChild(d); body.appendChild(site);
-
-    if (mediaHtml) {
-      const m = document.createElement("div");
-      m.className = "lc-media";
-      m.innerHTML = mediaHtml;
-      card.appendChild(m);
-    }
+    
+    body.appendChild(t);
+    body.appendChild(d);
+    body.appendChild(site);
     card.appendChild(body);
+    
     container.appendChild(card);
   }
 }
@@ -162,22 +189,28 @@ export function openLightbox(src, kind) {
   lightbox.className = "lightbox";
   lightbox.setAttribute("role", "dialog");
   lightbox.setAttribute("aria-modal", "true");
+  
   const media = kind === "video" ? document.createElement("video") : document.createElement("img");
   if (kind === "video") { media.controls = true; media.autoplay = true; }
   media.src = src;
   media.alt = "";
+  
   const close = document.createElement("button");
   close.className = "icon-btn lb-close";
   close.setAttribute("aria-label", "Fechar visualização");
   close.innerHTML = '<svg class="svg-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
   close.addEventListener("click", closeLightbox);
+  
   lightbox.addEventListener("click", (e) => { if (e.target === lightbox) closeLightbox(); });
   document.addEventListener("keydown", escClose, { once: true });
+  
   lightbox.appendChild(close);
   lightbox.appendChild(media);
   document.body.appendChild(lightbox);
 }
+
 function escClose(e) { if (e.key === "Escape") closeLightbox(); }
+
 export function closeLightbox() {
   if (lightbox) { lightbox.remove(); lightbox = null; }
 }
