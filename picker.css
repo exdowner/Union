@@ -1,0 +1,93 @@
+/* Picker-specific styles for GIPHY picker */
+.picker-panel {
+  position: absolute;
+  bottom: 78px;
+  right: 16px;
+  width: 520px;
+  max-width: calc(100% - 32px);
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-lg);
+  border-radius: 12px;
+  overflow: hidden;
+  z-index: 400;
+  display: flex;
+  flex-direction: column;
+}
+.picker-panel.hidden { display: none !important; }
+
+.picker-header {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.picker-header input[type="search"] {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  color: var(--text-0);
+  outline: none;
+}
+.picker-header input:focus { box-shadow: var(--ring); border-color: var(--accent); }
+
+.picker-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--line);
+}
+.picker-tabs button {
+  background: transparent;
+  color: var(--text-1);
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 13px;
+}
+.picker-tabs button.active { background: var(--bg-3); color: var(--text-0); }
+
+.picker-body {
+  padding: 10px;
+  max-height: 340px;
+  overflow: auto;
+  background: transparent;
+}
+
+.picker-section-title { font-weight: 700; color: var(--text-1); margin: 6px 6px 10px; }
+
+.gif-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.gif-grid button { padding: 0; border-radius: 10px; overflow: hidden; background: transparent; }
+.gif-grid button img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 8px; }
+
+.empty-state { padding: 18px; text-align: center; }
+
+.picker-footer {
+  padding: 8px 12px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  background: var(--bg-1);
+}
+.picker-footer img { height: 18px; opacity: .9; }
+
+/* responsive tweaks */
+@media (max-width: 720px) {
+  .picker-panel { right: 12px; left: 12px; width: auto; bottom: 86px; }
+  .gif-grid { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 420px) {
+  .picker-panel { left: 10px; right: 10px; width: auto; bottom: 96px; }
+  .gif-grid { grid-template-columns: repeat(2, 1fr); gap: 6px; }
+  .picker-body { max-height: 260px; }
+}
