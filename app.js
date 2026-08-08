@@ -1,4 +1,4 @@
-// app.js — Union Chat (COMPLETO)
+// app.js — Union Chat (COMPLETO + CORRIGIDO)
 import {
     auth, rtdb, signOut, updateProfile, serverTimestamp
 } from "./firebase-config.js";
@@ -1089,60 +1089,97 @@ $("open-profile-btn")?.addEventListener("click", () => {
 
 $("profile-avatar-input")?.addEventListener("change", (e) => {
     const f = e.target.files?.[0];
-    if (f && !f.type.startsWith("image/")) {
+    if (!f || !f.type.startsWith("image/")) {
         toast("Só imagem.");
+        e.target.value = "";
+        newAvatarFile = null;
         return;
     }
-    newAvatarFile = f || null;
-    if (newAvatarFile && exists("profile-avatar-preview")) {
-        $("profile-avatar-preview").src = URL.createObjectURL(newAvatarFile);
+    newAvatarFile = f;
+    if (exists("profile-avatar-preview")) {
+        $("profile-avatar-preview").src = URL.createObjectURL(f);
     }
 });
 
 $("profile-banner-input")?.addEventListener("change", (e) => {
     const f = e.target.files?.[0];
-    if (f && !f.type.startsWith("image/")) {
+    if (!f || !f.type.startsWith("image/")) {
         toast("Só imagem.");
+        e.target.value = "";
+        newBannerFile = null;
         return;
     }
-    newBannerFile = f || null;
-    if (newBannerFile && exists("profile-banner-preview")) {
-        $("profile-banner-preview").style.background = `url("${URL.createObjectURL(newBannerFile)}") center/cover`;
+    newBannerFile = f;
+    if (exists("profile-banner-preview")) {
+        $("profile-banner-preview").style.backgroundImage = `url("${URL.createObjectURL(f)}")`;
+        $("profile-banner-preview").style.backgroundSize = "cover";
+        $("profile-banner-preview").style.backgroundPosition = "center";
+    }
+});
+
+$("profile-avatar-url-input")?.addEventListener("input", (e) => {
+    const url = e.target.value.trim();
+    if (url && exists("profile-avatar-preview")) $("profile-avatar-preview").src = url;
+});
+
+$("profile-banner-url-input")?.addEventListener("input", (e) => {
+    const url = e.target.value.trim();
+    if (exists("profile-banner-preview")) {
+        $("profile-banner-preview").style.backgroundImage = url ? `url("${escapeAttribute(url)}")` : "";
+        $("profile-banner-preview").style.backgroundSize = "cover";
     }
 });
 
 $("confirm-profile")?.addEventListener("click", async () => {
-    if (!currentUser) return;
+    if (!currentUser) return toast("Não logado.");
+    const btn = $("confirm-profile");
+    btn.disabled = true;
+    btn.textContent = "Salvando...";
+
     const updates = {
-        displayName: $("profile-name-input")?.value?.trim().slice(0, 32) || "Usuário",
-        bio: $("profile-bio-input")?.value?.trim().slice(0, 190) || "",
+        displayName: ($("profile-name-input")?.value || "").trim().slice(0, 32) || "Usuário",
+        bio: ($("profile-bio-input")?.value || "").trim().slice(0, 190),
         accentColor: $("profile-color-input")?.value || "#5ee6c4",
         nameFont: $("profile-font-input")?.value || "Inter",
-        socialLinks: $("profile-social-input")?.value?.trim().slice(0, 500) || "",
-        customStatus: $("profile-status-input")?.value?.trim().slice(0, 32) || "",
+        socialLinks: ($("profile-social-input")?.value || "").trim().slice(0, 500),
+        customStatus: ($("profile-status-input")?.value || "").trim().slice(0, 32),
         presence: $("profile-presence-input")?.value || "online"
     };
+
     try {
         if (newAvatarFile) {
-            updates.photoURL = await convertImage(newAvatarFile, { maxWidth: 512, maxHeight: 512, quality: 0.82 });
-        } else if ($("profile-avatar-url-input")?.value.trim()) {
-            updates.photoURL = $("profile-avatar-url-input").value.trim();
+            updates.photoURL = await convertImage(newAvatarFile, {
+                maxWidth: 512, maxHeight: 512, quality: 0.82, maxSizeMB: 5
+            });
+        } else {
+            const url = ($("profile-avatar-url-input")?.value || "").trim();
+            if (url) updates.photoURL = url;
         }
+
         if (newBannerFile) {
-            updates.bannerURL = await convertImage(newBannerFile, { maxWidth: 1920, maxHeight: 1080, quality: 0.78 });
-        } else if ($("profile-banner-url-input")?.value.trim()) {
-            updates.bannerURL = $("profile-banner-url-input").value.trim();
+            updates.bannerURL = await convertImage(newBannerFile, {
+                maxWidth: 1920, maxHeight: 1080, quality: 0.78, maxSizeMB: 8
+            });
+        } else {
+            const url = ($("profile-banner-url-input")?.value || "").trim();
+            if (url) updates.bannerURL = url;
         }
+
         await safeUpdate(`users/${currentUser.uid}`, updates);
         await updateProfile(currentUser, { displayName: updates.displayName });
+
         userProfile = { ...userProfile, ...updates };
         newAvatarFile = null;
         newBannerFile = null;
         renderUserCard();
         closeModals();
-        toast("Perfil salvo.");
-    } catch (e) {
-        toast("Erro: " + e.message);
+        toast("Perfil salvo!");
+    } catch (err) {
+        console.error(err);
+        toast("Erro ao salvar: " + err.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = "Salvar";
     }
 });
 
@@ -1194,6 +1231,140 @@ document.addEventListener("click", async (e) => {
     } catch {
         toast("Erro ao abrir perfil.");
     }
+});
+
+// =====================================================
+// SERVER SETTINGS — SALVAR / EXCLUIR / ABAS
+// =====================================================
+$("save-server-overview")?.addEventListener("click", async () => {
+    if (!currentServerId || !currentUser) return;
+    const server = serverCache[currentServerId];
+    if (!server) return;
+
+    const name = ($("server-name-edit")?.value || "").trim();
+    if (!name) return toast("Nome obrigatório.");
+
+    const updates = { name };
+    const iconFile = $("server-icon-edit")?.files?.[0];
+    const bannerFile = $("server-banner-edit")?.files?.[0];
+
+    try {
+        if (iconFile) {
+            updates.iconURL = await convertImage(iconFile, { maxWidth: 512, maxHeight: 512, quality: 0.82 });
+        }
+        if (bannerFile) {
+            updates.bannerURL = await convertImage(bannerFile, { maxWidth: 1920, maxHeight: 400, quality: 0.8 });
+        }
+        await safeUpdate(`servers/${currentServerId}`, updates);
+        toast("Servidor atualizado.");
+        if (exists("current-server-name")) $("current-server-name").textContent = name;
+    } catch (err) {
+        toast("Erro: " + err.message);
+    }
+});
+
+$("server-icon-edit")?.addEventListener("change", (e) => {
+    const f = e.target.files?.[0];
+    if (f && exists("server-icon-preview")) {
+        $("server-icon-preview").src = URL.createObjectURL(f);
+    }
+});
+
+$("server-banner-edit")?.addEventListener("change", (e) => {
+    const f = e.target.files?.[0];
+    if (f && exists("server-banner-preview")) {
+        $("server-banner-preview").style.backgroundImage = `url("${URL.createObjectURL(f)}")`;
+        $("server-banner-preview").style.backgroundSize = "cover";
+    }
+});
+
+$("delete-server-btn")?.addEventListener("click", async () => {
+    if (!currentServerId || !currentUser) return;
+    const server = serverCache[currentServerId];
+    if (!server || server.ownerId !== currentUser.uid) {
+        return toast("Só o dono pode excluir.");
+    }
+    if (!confirm(`Excluir o servidor "${server.name}" permanentemente?`)) return;
+
+    try {
+        await remove(databaseRef(`servers/${currentServerId}`));
+        await remove(databaseRef(`channels/${currentServerId}`));
+        await remove(databaseRef(`serverMembers/${currentServerId}`));
+        await remove(databaseRef(`userServers/${currentUser.uid}/${currentServerId}`));
+        toast("Servidor excluído.");
+        currentServerId = null;
+        showView(null);
+        $("home-pill")?.click();
+    } catch (err) {
+        toast("Erro ao excluir: " + err.message);
+    }
+});
+
+document.querySelectorAll(".settings-tab").forEach(tab => {
+    tab.addEventListener("click", () => {
+        document.querySelectorAll(".settings-tab").forEach(t => t.classList.remove("active"));
+        tab.classList.add("active");
+        const id = tab.dataset.stab;
+        ["overview", "roles", "members", "bans"].forEach(p => {
+            $(`stab-${p}`)?.classList.toggle("hidden", p !== id);
+        });
+        if (id === "members") loadMembers();
+        if (id === "roles") loadRoles();
+        if (id === "bans") loadBans();
+    });
+});
+
+async function loadMembers() {
+    const list = $("members-list");
+    if (!list || !currentServerId) return;
+    list.innerHTML = "<p class='empty-hint'>Carregando...</p>";
+    try {
+        const snap = await safeGet(`serverMembers/${currentServerId}`);
+        const members = snap.exists() ? Object.keys(snap.val()) : [];
+        list.innerHTML = "";
+        for (const uid of members) {
+            const uSnap = await safeGet(`users/${uid}`);
+            const u = uSnap.exists() ? uSnap.val() : {};
+            const div = document.createElement("div");
+            div.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)";
+            div.innerHTML = `
+                <img class="avatar avatar-sm" src="${escapeAttribute(u.photoURL || createDefaultAvatar(uid))}" alt="">
+                <span style="flex:1">${escapeHTML(u.displayName || "Usuário")}</span>
+                <button type="button" class="btn-secondary" data-kick="${uid}" style="padding:4px 10px;font-size:12px">Remover</button>
+            `;
+            list.appendChild(div);
+        }
+        if (!members.length) list.innerHTML = "<p class='empty-hint'>Nenhum membro.</p>";
+
+        list.querySelectorAll("[data-kick]").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                const uid = btn.dataset.kick;
+                if (!confirm("Remover este membro?")) return;
+                await remove(databaseRef(`serverMembers/${currentServerId}/${uid}`));
+                await remove(databaseRef(`userServers/${uid}/${currentServerId}`));
+                toast("Membro removido.");
+                loadMembers();
+            });
+        });
+    } catch {
+        list.innerHTML = "<p class='empty-hint'>Erro ao carregar.</p>";
+    }
+}
+
+function loadRoles() {
+    const list = $("roles-list");
+    if (!list) return;
+    list.innerHTML = `<p class="empty-hint">Cargos em breve. Por enquanto só o dono tem permissão total.</p>`;
+}
+
+function loadBans() {
+    const list = $("bans-list");
+    if (!list) return;
+    list.innerHTML = `<p class="empty-hint">Nenhum banimento.</p>`;
+}
+
+$("create-role-btn")?.addEventListener("click", () => {
+    toast("Sistema de cargos completo em breve.");
 });
 
 // =====================================================
