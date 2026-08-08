@@ -63,6 +63,9 @@ registerForm.addEventListener("submit", async (e) => {
       nameFont: "Inter",
       socialLinks: "",
       customStatus: "Online",
+      presence: "online",
+      badges: ["inicio"],
+      friendCode: Math.random().toString(36).slice(2, 6).toUpperCase(),
       createdAt: serverTimestamp(),
     });
   } catch (err) {
@@ -97,6 +100,9 @@ export async function ensureUserDoc(user) {
       nameFont: "Inter",
       socialLinks: "",
       customStatus: "Online",
+      presence: "online",
+      badges: ["inicio"],
+      friendCode: Math.random().toString(36).slice(2, 6).toUpperCase(),
       createdAt: serverTimestamp(),
     });
   }
