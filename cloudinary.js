@@ -1,7 +1,7 @@
 // cloudinary.js — upload de imagens/vídeos sem precisar de cartão de crédito.
 // Troque os dois valores abaixo pelos seus (veja o README, seção "Cloudinary").
-const CLOUD_NAME = "TROQUE_PELO_SEU_CLOUD_NAME";
-const UPLOAD_PRESET = "TROQUE_PELO_SEU_UPLOAD_PRESET";
+const CLOUD_NAME = "tavfumjg";
+const UPLOAD_PRESET = "union";
 
 export async function uploadFile(file) {
   if (CLOUD_NAME.startsWith("TROQUE") || UPLOAD_PRESET.startsWith("TROQUE")) {
