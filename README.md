@@ -1,113 +1,320 @@
-# DevCord
+DevCord
 
-Um app estilo Discord (perfis, servidores, canais de texto/voz/fórum, upload de mídia,
-figurinhas, banners, chamadas de voz/vídeo) rodando 100% no navegador, com
-**Firebase Authentication + Realtime Database** (grátis, sem cartão) e
-**Cloudinary** para upload de arquivos (grátis, sem cartão). Pronto pra hospedar
-de graça no GitHub Pages.
+Um app estilo Discord com perfis, servidores, canais de texto, voz e fórum, figurinhas, banners e chamadas de voz/vídeo.
 
-## 1. Configure o Firebase (uma vez só)
+O projeto roda diretamente no navegador usando:
 
-No [Console do Firebase](https://console.firebase.google.com/), projeto `devcord-4dcf6`:
+Firebase Authentication
+Firebase Realtime Database
+WebRTC
+Base64 para imagens
 
-1. **Authentication → Sign-in method** → ative **Email/senha**.
-2. **Realtime Database** → se ainda não existe, crie (modo bloqueado) → aba **Regras**
-   → cole o conteúdo de `database.rules.json` deste projeto → **Publicar**.
-3. **Authentication → Settings → Domínios autorizados** → adicione o domínio que o
-   GitHub Pages vai te dar (ex: `seu-usuario.github.io`).
+Não utiliza Cloudinary, Firebase Storage ou qualquer serviço externo de armazenamento de arquivos.
 
-Sem o passo 2, o app abre mas ninguém consegue ler/escrever nada (o Realtime
-Database vem bloqueado por padrão).
+1. Configure o Firebase
 
-> Não usamos o Firebase Storage porque ele passou a exigir o plano pago Blaze
-> mesmo pra usar a cota grátis. Auth e Realtime Database continuam 100% grátis,
-> sem cartão de crédito, mesmo no plano Spark.
+No Console do Firebase, abra o projeto devcord-4dcf6.
 
-## 2. Configure o Cloudinary (upload de imagens/vídeos, grátis, sem cartão)
+Authentication
 
-1. Crie uma conta grátis em [cloudinary.com](https://cloudinary.com/users/register/free).
-2. No painel, copie o **Cloud name** (aparece no topo do Dashboard).
-3. Vá em **Settings → Upload → Upload presets → Add upload preset**:
-   - **Signing Mode**: troque para **Unsigned**.
-   - Dê um nome memorável pro preset (ex: `devcord_unsigned`) e salve.
-4. Abra `cloudinary.js` neste projeto e troque:
-   ```js
-   const CLOUD_NAME = "TROQUE_PELO_SEU_CLOUD_NAME";
-   const UPLOAD_PRESET = "TROQUE_PELO_SEU_UPLOAD_PRESET";
-   ```
-   pelos valores dos passos 2 e 3.
+Acesse:
 
-O plano grátis do Cloudinary dá 25GB de armazenamento e 25GB de banda por mês —
-de sobra pra começar.
+Authentication → Sign-in method
 
-## 3. Suba pro GitHub Pages
+Ative:
 
-```bash
+Email/senha
+
+Realtime Database
+
+Acesse:
+
+Realtime Database → Regras
+
+Cole o conteúdo de:
+
+database.rules.json
+
+Depois clique em:
+
+Publicar
+
+Sem as regras corretas, o app poderá abrir normalmente, mas operações no banco poderão retornar:
+
+PERMISSION_DENIED
+Domínios autorizados
+
+Em:
+
+Authentication → Settings → Authorized domains
+
+adicione o domínio onde o DevCord será hospedado.
+
+Por exemplo:
+
+seu-usuario.github.io
+2. Sistema de imagens
+
+O DevCord não utiliza Cloudinary.
+
+Também não utiliza:
+
+Firebase Storage
+Cloudinary
+APIs externas de upload
+serviços pagos de armazenamento
+
+As imagens são processadas localmente pelo navegador.
+
+Fluxo:
+
+Imagem selecionada
+        ↓
+image.js
+        ↓
+Canvas
+        ↓
+Redimensionamento
+        ↓
+Compressão WebP
+        ↓
+Base64
+        ↓
+Firebase Realtime Database
+
+O arquivo:
+
+image.js
+
+é responsável por converter e comprimir as imagens.
+
+Ele é utilizado para:
+
+avatar;
+banner;
+ícone de servidor;
+imagens enviadas no chat;
+figurinhas.
+Importante
+
+Como as imagens são armazenadas diretamente no Realtime Database, imagens grandes podem consumir bastante espaço e atingir os limites do banco.
+
+Por isso o image.js redimensiona e comprime as imagens antes de salvá-las.
+
+3. Suba para o GitHub Pages
 git init
 git add .
 git commit -m "DevCord"
 git branch -M main
 git remote add origin https://github.com/SEU-USUARIO/devcord.git
 git push -u origin main
-```
 
-No repositório: **Settings → Pages → Source: `main` / (root)** → salvar. Em alguns
-minutos o app fica em `https://SEU-USUARIO.github.io/devcord/`.
+No GitHub:
 
-## 4. Usando o app
+Settings → Pages → Source
 
-- **Cadastro/login**: aba "Criar conta" ou "Entrar" na tela inicial.
-- **Criar servidor**: clique no `+` na barra lateral esquerda → digite `criar`.
-- **Entrar em servidor existente**: clique no `+` → cole o ID do servidor (o dono
-  encontra esse ID clicando na engrenagem ⚙ ao lado do nome do servidor).
-- **Criar canal**: dentro de um servidor, clique no `+` ao lado de "Canais de texto/
-  voz/fóruns", ou pela engrenagem ⚙.
-- **Perfil**: ✎ no cartão de usuário (canto inferior esquerdo) — foto, banner, nome,
-  bio, cor de destaque, fonte do nick, e links de redes sociais.
-- **Figurinhas**: no chat, botão 🩹 abre o seletor; o `+` no seletor sobe uma imagem
-  como figurinha nova (fica salva no seu perfil pra sempre).
-- **Voz/vídeo**: entre num canal de voz e clique em "Entrar no canal de voz". O
-  navegador vai pedir permissão de câmera/microfone.
+Selecione:
 
-## Limitações importantes (pra você saber o que esperar)
+main / (root)
 
-- **Voz/vídeo** usa WebRTC em malha (cada pessoa conecta direto com as outras),
-  sinalizado pelo Realtime Database — funciona bem para 2 a 4 pessoas no mesmo
-  canal. Não há servidor TURN dedicado, então em redes muito restritas (Wi-Fi
-  corporativo, CGNAT dupla) a chamada pode não conectar.
-- Não existe "servidor" fazendo nada — tudo roda no navegador de cada pessoa, então
-  esse é um app 100% estático, compatível com GitHub Pages.
-- As chaves do Firebase no código são públicas por natureza (isso é normal e
-  documentado pelo próprio Firebase); a segurança de verdade está nas regras do
-  `database.rules.json` que você colou no passo 1.
-- Sem infraestrutura de moderação, roles/permissões por cargo, notificações push ou
-  DMs — dá pra evoluir a partir daqui.
+Depois de alguns minutos o aplicativo estará disponível no endereço do GitHub Pages.
 
-## Estrutura dos arquivos
+4. Usando o app
+Cadastro
 
-```
-index.html            tela de login/cadastro + shell do app
-style.css              visual (tema escuro, identidade própria)
-firebase-config.js     inicialização do Firebase (Auth + Realtime Database)
-cloudinary.js           upload de imagens/vídeos (avatares, banners, mídia, ícones)
-auth.js                 cadastro, login, sessão
-app.js                  servidores, canais, chat, upload, stickers, fórum, perfil
-webrtc.js               chamadas de voz/vídeo (sinalização via Realtime Database)
-database.rules.json     regras de segurança do banco (cole no console do Firebase)
-```
+Na tela inicial:
 
-## Estrutura dos dados no Realtime Database
+Criar conta
 
-```
-users/{uid}                                   perfil
-servers/{serverId}                            nome, ícone, dono
-serverMembers/{serverId}/{uid}                índice de membros
-userServers/{uid}/{serverId}                  índice inverso (servidores do usuário)
-channels/{serverId}/{channelId}               canais (texto/voz/fórum)
-messages/{serverId}/{channelId}/{msgId}       mensagens
-posts/{serverId}/{channelId}/{postId}         tópicos de fórum
-replies/{serverId}/{channelId}/{postId}/{id}  respostas de fórum
-stickers/{uid}/{stickerId}                    figurinhas customizadas
-voicePresence/{serverId}/{channelId}/{uid}    quem está no canal de voz agora
-calls/{callKey}                               sinalização WebRTC (offer/answer/ICE)
-```
+Informe:
+
+nome;
+email;
+senha.
+Login
+
+Use o email e a senha cadastrados.
+
+Criar servidor
+
+Clique no:
+
++
+
+na barra lateral.
+
+Depois escolha:
+
+criar
+
+O servidor receberá um ID que pode ser compartilhado para outras pessoas entrarem.
+
+Entrar em um servidor
+
+Clique no:
+
++
+
+e cole o ID do servidor.
+
+Criar canal
+
+Dentro de um servidor, use o botão + ao lado das categorias de canais.
+
+É possível criar:
+
+Texto
+Voz
+Fórum
+Perfil
+
+No cartão do usuário é possível editar:
+
+foto;
+banner;
+nome;
+bio;
+cor;
+fonte;
+redes sociais.
+
+As imagens são convertidas para Base64 antes de serem salvas.
+
+Chat
+
+O chat suporta:
+
+mensagens de texto;
+imagens;
+emojis;
+figurinhas personalizadas.
+
+As imagens são processadas pelo image.js e armazenadas no Firebase Realtime Database.
+
+Figurinhas
+
+Abra o seletor de figurinhas pelo botão correspondente.
+
+O botão + permite selecionar uma imagem.
+
+A imagem é:
+
+selecionada
+→ comprimida
+→ convertida para Base64
+→ salva no Firebase
+Voz e vídeo
+
+O sistema utiliza WebRTC.
+
+O Realtime Database é usado apenas para sinalização.
+
+A mídia é transmitida diretamente entre os navegadores.
+
+O sistema funciona melhor com poucas pessoas no mesmo canal.
+
+Não existe servidor TURN dedicado neste projeto.
+
+5. Limitações
+
+Como as imagens ficam dentro do Realtime Database, recomenda-se utilizar imagens pequenas e comprimidas.
+
+O sistema não utiliza infraestrutura própria de armazenamento.
+
+Também não possui atualmente:
+
+moderação avançada;
+cargos/permissões;
+notificações push;
+mensagens privadas;
+servidor dedicado de voz;
+servidor TURN dedicado.
+6. Estrutura dos arquivos
+index.html
+style.css
+firebase-config.js
+auth.js
+app.js
+image.js
+webrtc.js
+database.rules.json
+README.md
+index.html
+
+Interface principal do aplicativo.
+
+style.css
+
+Estilos e identidade visual.
+
+firebase-config.js
+
+Inicialização do Firebase Authentication e Realtime Database.
+
+auth.js
+
+Cadastro, login, logout e criação do perfil.
+
+app.js
+
+Núcleo do aplicativo:
+
+servidores;
+canais;
+mensagens;
+imagens;
+figurinhas;
+fórum;
+perfil;
+chamadas.
+image.js
+
+Processamento local das imagens:
+
+validação;
+redimensionamento;
+compressão;
+conversão para Base64.
+webrtc.js
+
+Sistema de voz/vídeo usando WebRTC.
+
+database.rules.json
+
+Regras de segurança do Firebase Realtime Database.
+
+7. Estrutura do Realtime Database
+users/{uid}
+
+servers/{serverId}
+
+serverMembers/{serverId}/{uid}
+
+userServers/{uid}/{serverId}
+
+channels/{serverId}/{channelId}
+
+messages/{serverId}/{channelId}/{msgId}
+
+posts/{serverId}/{channelId}/{postId}
+
+replies/{serverId}/{channelId}/{postId}/{id}
+
+stickers/{uid}/{stickerId}
+
+voicePresence/{serverId}/{channelId}/{uid}
+
+calls/{callKey}
+8. Cloudinary
+
+O DevCord não utiliza Cloudinary.
+
+O arquivo:
+
+cloudinary.js
+
+foi removido do projeto.
+
+Nenhuma configuração do Cloudinary é necessária.
+
+O upload de imagens é feito pelo próprio navegador através do image.js.

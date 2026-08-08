@@ -9,6 +9,7 @@
 
     "servers": {
       ".read": "auth != null",
+
       "$serverId": {
         ".write": "auth != null && (!data.exists() || data.child('ownerId').val() === auth.uid || root.child('serverMembers').child($serverId).child(auth.uid).exists())"
       }
@@ -17,6 +18,7 @@
     "serverMembers": {
       "$serverId": {
         ".read": "auth != null",
+
         "$uid": {
           ".write": "auth != null && auth.uid === $uid"
         }
@@ -77,6 +79,7 @@
       "$serverId": {
         "$channelId": {
           ".read": "auth != null",
+
           "$uid": {
             ".write": "auth != null && auth.uid === $uid"
           }
