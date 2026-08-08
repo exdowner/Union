@@ -1,97 +1,18 @@
-// app.js — núcleo do DevCord: servidores, canais, chat, uploads, stickers, fórum,
-// perfil, amigos, DMs, notificações, reações, GIPHY, emojis, busca, galeria, cargos,
-// moderação e previews de links. Tudo com Firebase Realtime Database.
+// app.js — núcleo do DevCord: servidores, canais, chat, uploads, stickers, fórum e perfil
+// Tudo com Firebase Realtime Database (sem custo, sem cartão).
 import { auth, rtdb, signOut, updateProfile, serverTimestamp } from "./firebase-config.js";
 import {
-  ref, push, set, update, remove, get, onValue, off, onChildAdded,
-  onDisconnect, query, orderByChild, limitToLast,
+  ref, push, set, update, remove, get, onValue, off,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-database.js";
 import { uploadFile } from "./cloudinary.js";
-import { joinVoiceChannel, leaveVoiceChannel, setDeafMode, startScreenShare, stopScreenShare, sendCallChatMessage } from "./webrtc.js";
-import { icon } from "./icons.js";
-import { renderEmojiPicker, addRecentEmoji, isFavEmoji, toggleFavEmoji, getFavEmojis } from "./emoji.js";
-import { renderGiphyPicker, searchGifs, searchStickers, trendingGifs, trendingStickers, addRecentGif, getRecentGifs } from "./giphy.js";
-import { appendLinkCards, openLightbox } from "./links.js";
-import { getTheme, setTheme, initTheme } from "./theme.js";
+import { joinVoiceChannel, leaveVoiceChannel } from "./webrtc.js";
 
-// ===================== HELPERS =====================
-const $ = (id) => document.getElementById(id);
-const MAX_MSG = 5000;
-const MAX_UPLOAD = 5 * 1024 * 1024;
-
-function esc(str) {
-  const d = document.createElement("div");
-  d.textContent = str ?? "";
-  return d.innerHTML;
-}
-
-function sanitizeUrl(url) {
-  if (typeof url !== "string") return "";
-  try {
-    const u = new URL(url);
-    if (u.protocol !== "http:" && u.protocol !== "https:") return "";
-    return u.href;
-  } catch { return ""; }
-}
-
-function defaultAvatar(seed) {
-  return `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(seed)}`;
-}
-
-function toast(msg, type = "info", ms = 2600) {
-  const wrap = $("toast-wrap");
-  const t = document.createElement("div");
-  t.className = "toast " + type;
-  t.textContent = msg;
-  t.setAttribute("role", "status");
-  wrap.appendChild(t);
-  setTimeout(() => { t.style.opacity = "0"; t.style.transition = "opacity 200ms"; }, ms - 200);
-  setTimeout(() => t.remove(), ms);
-}
-window.addEventListener("devcord:toast", (e) => toast(e.detail?.msg, e.detail?.type));
-
-function iconButton(name, opts = {}) {
-  const b = document.createElement("button");
-  b.type = "button";
-  b.className = "icon-btn" + (opts.className ? " " + opts.className : "");
-  b.innerHTML = icon(name, opts.size || 18);
-  if (opts.label) b.setAttribute("aria-label", opts.label);
-  if (opts.tooltip) b.dataset.tooltip = opts.tooltip;
-  if (opts.on) b.addEventListener("click", opts.on);
-  return b;
-}
-
-function skeletonLines(container, n, cls = "skel-line") {
-  container.innerHTML = "";
-  for (let i = 0; i < n; i++) {
-    const s = document.createElement("div");
-    s.className = "skeleton " + cls;
-    s.style.width = (60 + ((i * 37) % 35)) + "%";
-    s.style.marginBottom = "10px";
-    container.appendChild(s);
-  }
-}
-
-function emptyState(iconName, title, desc) {
-  return `<div class="empty-state"><div class="es-icon">${icon(iconName, 34)}</div><h3>${esc(title)}</h3><p>${esc(desc || "")}</p></div>`;
-}
-function errorState(title, desc) {
-  return `<div class="error-state"><div class="es-icon">${icon("alert-triangle", 34)}</div><h3>${esc(title)}</h3><p>${esc(desc || "")}</p></div>`;
-}
-
-function debounce(fn, ms) {
-  let t;
-  return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
-}
-
-// ===================== ESTADO GLOBAL =====================
 let currentUser = null;
 let userProfile = null;
 let currentServerId = null;
 let currentChannelId = null;
 let currentChannelType = null;
 let pendingFile = null;
-let uploadCtrl = null;
 
 let serverCache = {};
 let serverUnsubs = {};
@@ -100,131 +21,60 @@ let unsubChannels = null;
 let unsubMessages = null;
 let unsubForumPosts = null;
 let unsubForumReplies = null;
-let unsubTyping = null;
-let unsubFriends = null;
-let unsubNotifs = null;
-let unsubFeed = null;
 
-let rolesCache = {};
-let unreadChannels = {};   // `${serverId}/${channelId}` -> count
-let readsCache = {};       // `${serverId}/${channelId}` -> lastRead ts
-let typingCache = {};      // `${serverId}/${channelId}` -> {uid:name}
-let feedSubs = {};         // `${serverId}/${channelId}` -> unsub fn
-let feedChannels = {};     // `${serverId}` -> {channelId:true}
-let dmOpenPair = null;
-let dmUnsub = null;
-let dmMessagesCache = null;
-let lastSentAt = {};
-let pendingGif = null;
-let userFavGifs = [];
-let userFavStickers = [];
+const $ = (id) => document.getElementById(id);
 
-// ===================== MODAIS / DRAWERS =====================
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.remove("hidden");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.classList.add("hidden"), 2600);
+}
+
 function openModal(id) {
   $("modal-overlay").classList.remove("hidden");
   document.querySelectorAll(".modal").forEach((m) => m.classList.add("hidden"));
   $(id).classList.remove("hidden");
-  $(id).querySelector("input, textarea, select, button:not(.modal-cancel)")?.focus?.();
 }
-function closeModals() { $("modal-overlay").classList.add("hidden"); }
+function closeModals() {
+  $("modal-overlay").classList.add("hidden");
+}
 document.querySelectorAll(".modal-cancel").forEach((b) => b.addEventListener("click", closeModals));
 $("modal-overlay").addEventListener("click", (e) => { if (e.target.id === "modal-overlay") closeModals(); });
-document.querySelectorAll(".modal-close:not(.modal-cancel)").forEach((b) => {
-  if (b.id === "user-profile-close") return;
-  b.addEventListener("click", closeModals);
-});
-$("user-profile-close").addEventListener("click", closeModals);
 
-function openDrawer(id) {
-  closeDrawers();
-  $("drawer-overlay").classList.remove("hidden");
-  $(id).classList.remove("hidden");
-}
-function closeDrawers() {
-  $("drawer-overlay").classList.add("hidden");
-  document.querySelectorAll(".drawer").forEach((d) => d.classList.add("hidden"));
-}
-$("drawer-overlay").addEventListener("click", closeDrawers);
-document.querySelectorAll(".drawer-close").forEach((b) => b.addEventListener("click", closeDrawers));
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeDrawers(); closeModals(); } });
-
-// ===================== TEMA =====================
-initTheme();
-function cycleTheme() {
-  const order = ["dark", "light", "amoled"];
-  const cur = getTheme();
-  const next = order[(order.indexOf(cur) + 1) % order.length];
-  setTheme(next);
-  updateThemeButton();
-}
-function updateThemeButton() {
-  const icons = { dark: "moon", light: "sun", amoled: "moon" };
-  [$("theme-btn"), $("auth-theme-btn")].forEach((b) => { if (b) b.innerHTML = icon(icons[getTheme()] || "moon", 18); });
-}
-$("theme-btn").addEventListener("click", cycleTheme);
-$("auth-theme-btn").addEventListener("click", cycleTheme);
-
-// ===================== BOOT =====================
+// ===================== BOOT ao logar =====================
 window.addEventListener("devcord:signed-in", async (e) => {
   currentUser = e.detail;
   const snap = await get(ref(rtdb, `users/${currentUser.uid}`));
   userProfile = snap.val();
   renderUserCard();
   listenServers();
-  listenFriends();
-  listenNotifications();
-  setupPresence();
-  updateThemeButton();
-  handleDeepLink();
-  await loadUserFavs();
 });
-
-function setupPresence() {
-  const myRef = ref(rtdb, `presence/${currentUser.uid}`);
-  const conn = ref(rtdb, ".info/connected");
-  onValue(conn, (s) => {
-    if (s.val() === true) {
-      const d = onDisconnect(myRef);
-      d.update({ status: "offline", lastSeen: serverTimestamp() }).then(() => {
-        set(myRef, { status: userProfile?.presence || "online", lastSeen: serverTimestamp() });
-      }).catch(() => {});
-    }
-  });
-  listenUserPresence(currentUser.uid, "online");
-}
 
 function renderUserCard() {
   $("user-card-avatar").src = userProfile.photoURL || defaultAvatar(currentUser.uid);
   $("user-card-name").textContent = userProfile.displayName || "Usuário";
   $("user-card-name").style.fontFamily = userProfile.nameFont || "Inter";
-  const st = userProfile.presence || "online";
-  const label = { online: "Online", idle: "Ausente", dnd: "Não perturbe", offline: "Invisível" }[st] || "Online";
-  $("user-card-status").lastChild.textContent = " " + label;
-  const pd = $("user-card-status").querySelector(".pd");
-  pd.className = "pd " + st;
-  $("user-card-presence").className = "presence-dot " + st;
+  $("user-card-status").textContent = userProfile.customStatus || "Online";
 }
 
-$("user-card-info").addEventListener("click", () => { loadSettings(); openModal("modal-settings"); });
-$("status-menu-btn").addEventListener("click", () => { loadSettings(); openModal("modal-settings"); });
+function defaultAvatar(seed) {
+  return `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(seed)}`;
+}
 
-// ===================== PRESENÇA (online/offline/ausente/dnd) =====================
-const presenceListeners = {};
-export function listenUserPresence(uid, fallback) {
-  if (presenceListeners[uid]) return presenceListeners[uid];
-  const cb = onValue(ref(rtdb, `presence/${uid}`), (s) => {
-    const v = s.val();
-    window.dispatchEvent(new CustomEvent("devcord:presence", { detail: { uid, status: v?.status || "offline" } }));
-  });
-  presenceListeners[uid] = cb;
-  return cb;
+function escapeHTML(str) {
+  const d = document.createElement("div");
+  d.textContent = str ?? "";
+  return d.innerHTML;
 }
 
 // ===================== SERVIDORES =====================
 function listenServers() {
   const uServRef = ref(rtdb, `userServers/${currentUser.uid}`);
-  unsubUserServers = onValue(uServRef, (snap) => {
+  onValue(uServRef, (snap) => {
     const ids = snap.exists() ? Object.keys(snap.val()) : [];
+
     Object.keys(serverUnsubs).forEach((id) => {
       if (!ids.includes(id)) {
         off(ref(rtdb, `servers/${id}`), "value", serverUnsubs[id]);
@@ -232,26 +82,19 @@ function listenServers() {
         delete serverCache[id];
       }
     });
+
     ids.forEach((id) => {
       if (!serverUnsubs[id]) {
         const sRef = ref(rtdb, `servers/${id}`);
         const cb = onValue(sRef, (s2) => {
           serverCache[id] = { id, ...(s2.val() || {}) };
           renderServerList();
-          loadServerRoles(id);
-          loadChannelMeta(id);
         });
         serverUnsubs[id] = cb;
       }
     });
     renderServerList();
   });
-}
-
-async function loadServerRoles(serverId) {
-  const snap = await get(ref(rtdb, `servers/${serverId}/roles`));
-  rolesCache[serverId] = snap.val() || {};
-  window.dispatchEvent(new CustomEvent("devcord:roles", { detail: { serverId } }));
 }
 
 function renderServerList() {
@@ -261,17 +104,9 @@ function renderServerList() {
     const btn = document.createElement("button");
     btn.className = "server-pill" + (s.id === currentServerId ? " active" : "");
     btn.title = s.name || "";
-    btn.setAttribute("aria-label", s.name || "Servidor");
-    if (hasServerUnread(s.id)) {
-      const dot = document.createElement("span");
-      dot.className = "unread-pill";
-      dot.setAttribute("aria-hidden", "true");
-      btn.appendChild(dot);
-    }
     if (s.iconURL) {
       const img = document.createElement("img");
       img.src = s.iconURL;
-      img.alt = "";
       btn.appendChild(img);
     } else {
       btn.textContent = (s.name || "??").slice(0, 2).toUpperCase();
@@ -281,61 +116,210 @@ function renderServerList() {
   });
 }
 
-// ... rest of file unchanged until composer section ...
-
-// ===================== COMPOSER =====================
-const input = $("message-input");
-input.addEventListener("input", () => {
-  input.style.height = "auto";
-  input.style.height = Math.min(input.scrollHeight, 140) + "px";
-  emitTyping();
+$("add-server-btn").addEventListener("click", () => {
+  const action = prompt("Digite 'criar' para criar um servidor novo, ou cole o ID de um servidor para entrar nele:");
+  if (!action) return;
+  if (action.trim().toLowerCase() === "criar") {
+    openModal("modal-create-server");
+  } else {
+    joinServerById(action.trim());
+  }
 });
 
-let typingLastWrite = 0;
-function emitTyping() {
-  if (!currentServerId || !currentChannelId || !currentUser) return;
-  const now = Date.now();
-  if (now - typingLastWrite < 1500) return;
-  typingLastWrite = now;
-  const path = `typing/${currentServerId}/${currentChannelId}/${currentUser.uid}`;
-  const r = ref(rtdb, path);
-  set(r, { name: userProfile.displayName, at: serverTimestamp() }).catch(() => {});
-  onDisconnect(r).remove();
+async function joinServerById(serverId) {
+  try {
+    const snap = await get(ref(rtdb, `servers/${serverId}`));
+    if (!snap.exists()) { toast("Servidor não encontrado."); return; }
+    await set(ref(rtdb, `serverMembers/${serverId}/${currentUser.uid}`), true);
+    await set(ref(rtdb, `userServers/${currentUser.uid}/${serverId}`), true);
+    toast("Você entrou no servidor!");
+  } catch (err) {
+    toast("Não foi possível entrar: " + err.message);
+  }
 }
 
-function listenTyping() {
-  if (unsubTyping) off(ref(rtdb, unsubTyping.path), "value", unsubTyping.cb);
-  const path = `typing/${currentServerId}/${currentChannelId}`;
-  const r = ref(rtdb, path);
-  const cb = onValue(r, (snap) => {
-    const box = $("typing-indicator");
-    const val = snap.val() || {};
-    const now = Date.now();
-    const names = [];
-    Object.entries(val).forEach(([uid, t]) => {
-      if (uid === currentUser.uid) return;
-      const at = typeof t?.at === "number" ? t.at : now;
-      if (now - at < 4000 && !names.includes(t.name)) names.push(t.name);
-    });
-    if (names.length) {
-      box.innerHTML = `<span class="typing-dots"><span></span><span></span><span></span></span> ${esc(names.join(", "))} ${names.length > 1 ? "estão digitando..." : "está digitando..."}`;
-    } else box.innerHTML = "";
+$("confirm-create-server").addEventListener("click", async () => {
+  const name = $("new-server-name").value.trim();
+  if (!name) { toast("Dê um nome ao servidor."); return; }
+  const file = $("new-server-icon").files[0];
+
+  const newRef = push(ref(rtdb, "servers"));
+  const serverId = newRef.key;
+  await set(newRef, {
+    name,
+    ownerId: currentUser.uid,
+    iconURL: "",
+    createdAt: serverTimestamp(),
   });
-  unsubTyping = { path, cb };
+  await set(ref(rtdb, `serverMembers/${serverId}/${currentUser.uid}`), true);
+  await set(ref(rtdb, `userServers/${currentUser.uid}/${serverId}`), true);
+
+  if (file) {
+    try {
+      const { url } = await uploadFile(file);
+      await update(ref(rtdb, `servers/${serverId}`), { iconURL: url });
+    } catch (err) {
+      toast("Servidor criado, mas o ícone falhou: " + err.message);
+    }
+  }
+  $("new-server-name").value = "";
+  $("new-server-icon").value = "";
+  closeModals();
+  toast(`Servidor "${name}" criado! ID de convite: ${serverId}`);
+  selectServer(serverId, { name });
+});
+
+async function selectServer(serverId, serverData) {
+  currentServerId = serverId;
+  currentChannelId = null;
+  $("current-server-name").textContent = serverData.name;
+  $("server-settings-btn").classList.remove("hidden");
+  document.querySelectorAll(".server-pill").forEach((p) => p.classList.remove("active"));
+  $("home-pill").classList.remove("active");
+  renderServerList();
+  listenChannels();
+}
+
+$("home-pill").addEventListener("click", () => {
+  currentServerId = null;
+  currentChannelId = null;
+  $("current-server-name").textContent = "Bem-vindo";
+  $("server-settings-btn").classList.add("hidden");
+  $("channel-groups").innerHTML = '<p class="empty-hint">Crie ou entre em um servidor pra ver os canais aqui.</p>';
+  showView(null);
+  document.querySelectorAll(".server-pill").forEach((p) => p.classList.remove("active"));
+  $("home-pill").classList.add("active");
+});
+
+$("server-settings-btn").addEventListener("click", () => {
+  if (!currentServerId) return;
+  const choice = prompt(
+    `ID de convite deste servidor (compartilhe para outras pessoas entrarem):\n${currentServerId}\n\nDigite 'canal' para criar um novo canal, ou cancele.`
+  );
+  if (choice && choice.trim().toLowerCase() === "canal") openModal("modal-create-channel");
+});
+
+// ===================== CANAIS =====================
+function listenChannels() {
+  if (unsubChannels) off(ref(rtdb, `channels/${currentServerId}`), "value", unsubChannels);
+  const chRef = ref(rtdb, `channels/${currentServerId}`);
+  unsubChannels = onValue(chRef, (snap) => {
+    const groups = { text: [], voice: [], forum: [] };
+    const val = snap.val() || {};
+    Object.entries(val)
+      .sort((a, b) => (a[1].createdAt || 0) - (b[1].createdAt || 0))
+      .forEach(([id, data]) => groups[data.type]?.push({ id, ...data }));
+    renderChannels(groups);
+  });
+}
+
+const TYPE_LABEL = { text: "Canais de texto", voice: "Canais de voz", forum: "Fóruns" };
+const TYPE_ICON = { text: "#", voice: "🔊", forum: "🗂" };
+
+function renderChannels(groups) {
+  const root = $("channel-groups");
+  root.innerHTML = "";
+  Object.keys(groups).forEach((type) => {
+    const label = document.createElement("div");
+    label.className = "channel-group-label";
+    label.innerHTML = `<span>${TYPE_LABEL[type]}</span>`;
+    const addBtn = document.createElement("button");
+    addBtn.textContent = "+";
+    addBtn.title = "Criar canal";
+    addBtn.addEventListener("click", () => {
+      openModal("modal-create-channel");
+      $("new-channel-type").value = type;
+    });
+    label.appendChild(addBtn);
+    root.appendChild(label);
+
+    groups[type].forEach((ch) => {
+      const item = document.createElement("div");
+      item.className = "channel-item" + (ch.id === currentChannelId ? " active" : "");
+      item.innerHTML = `<span class="ch-icon">${TYPE_ICON[type]}</span><span>${escapeHTML(ch.name)}</span>`;
+      item.addEventListener("click", () => selectChannel(ch));
+      root.appendChild(item);
+    });
+
+    if (!groups[type].length) {
+      const empty = document.createElement("p");
+      empty.className = "empty-hint";
+      empty.textContent = "Nenhum canal ainda.";
+      root.appendChild(empty);
+    }
+  });
+}
+
+$("confirm-create-channel").addEventListener("click", async () => {
+  const name = $("new-channel-name").value.trim().toLowerCase().replace(/\s+/g, "-");
+  const type = $("new-channel-type").value;
+  if (!name) { toast("Dê um nome ao canal."); return; }
+  await push(ref(rtdb, `channels/${currentServerId}`), {
+    name, type, createdAt: serverTimestamp(),
+  });
+  $("new-channel-name").value = "";
+  closeModals();
+});
+
+function selectChannel(ch) {
+  if (currentChannelType === "voice" && currentChannelId !== ch.id) leaveVoiceChannel();
+  currentChannelId = ch.id;
+  currentChannelType = ch.type;
+  $("channel-title").textContent = (ch.type === "text" ? "# " : ch.type === "voice" ? "🔊 " : "🗂 ") + ch.name;
+  document.querySelectorAll(".channel-item").forEach((el) => el.classList.remove("active"));
+  showView(ch.type);
+  if (ch.type === "text") listenMessages();
+  if (ch.type === "voice") setupVoiceView(ch);
+  if (ch.type === "forum") listenForum();
+  $("call-btn").classList.toggle("hidden", ch.type !== "voice");
+}
+
+function showView(type) {
+  ["text", "voice", "forum"].forEach((t) => $("view-" + t).classList.toggle("hidden", t !== type));
+}
+
+// ===================== MENSAGENS (chat de texto) =====================
+function listenMessages() {
+  const path = `messages/${currentServerId}/${currentChannelId}`;
+  if (unsubMessages) off(ref(rtdb, unsubMessages.path), "value", unsubMessages.cb);
+  const mRef = ref(rtdb, path);
+  const cb = onValue(mRef, (snap) => {
+    const box = $("messages");
+    box.innerHTML = "";
+    const val = snap.val() || {};
+    Object.values(val)
+      .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
+      .forEach(renderMessage);
+    box.scrollTop = box.scrollHeight;
+  });
+  unsubMessages = { path, cb };
+}
+
+function renderMessage(m) {
+  const box = $("messages");
+  const el = document.createElement("div");
+  el.className = "msg";
+  const time = m.createdAt ? new Date(m.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "";
+  let mediaHtml = "";
+  if (m.imageURL) mediaHtml = `<div class="msg-media"><img src="${m.imageURL}" loading="lazy" /></div>`;
+  if (m.videoURL) mediaHtml = `<div class="msg-media"><video src="${m.videoURL}" controls></video></div>`;
+  if (m.sticker) mediaHtml = `<div class="msg-sticker">${m.sticker}</div>`;
+  if (m.stickerURL) mediaHtml = `<div class="msg-media"><img src="${m.stickerURL}" style="max-width:120px" /></div>`;
+  el.innerHTML = `
+    <img class="avatar avatar-sm" src="${m.authorPhoto || defaultAvatar(m.uid)}" />
+    <div class="msg-body">
+      <div class="msg-head"><span class="msg-author" style="color:${m.authorColor || "var(--text-0)"}">${escapeHTML(m.authorName || "Usuário")}</span><span class="msg-time">${time}</span></div>
+      ${m.text ? `<div class="msg-text">${escapeHTML(m.text)}</div>` : ""}
+      ${mediaHtml}
+    </div>`;
+  box.appendChild(el);
 }
 
 $("message-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const text = input.value.trim().slice(0, MAX_MSG);
-  if (!text && !pendingFile && !pendingGif) return;
-
-  const now = Date.now();
-  if (lastSentAt[currentChannelId] && now - lastSentAt[currentChannelId] < 700) {
-    toast("Devagar! Você está enviando rápido demais.", "error");
-    return;
-  }
-  lastSentAt[currentChannelId] = now;
-
+  const input = $("message-input");
+  const text = input.value.trim();
+  if (!text && !pendingFile) return;
   const base = {
     uid: currentUser.uid,
     authorName: userProfile.displayName,
@@ -344,279 +328,279 @@ $("message-form").addEventListener("submit", async (e) => {
     text: text || "",
     createdAt: serverTimestamp(),
   };
-
-  if (pendingGif) {
-    // pendingGif: normalized item from giphy.js
-    base.type = pendingGif.type || "gif";
-    base.provider = pendingGif.provider || "giphy";
-    base.gifId = pendingGif.gifId || pendingGif.id;
-    base.url = pendingGif.full || pendingGif.url;
-    base.preview = pendingGif.preview || pendingGif.url;
-    base.width = pendingGif.width || 0;
-    base.height = pendingGif.height || 0;
-    base.title = pendingGif.title || "";
-    pendingGif = null;
-    $("gif-picker").classList.add("hidden");
-  }
-
   if (pendingFile) {
     try {
       const { url, isVideo } = await uploadFile(pendingFile);
       base[isVideo ? "videoURL" : "imageURL"] = url;
     } catch (err) {
-      toast("Falha no upload: " + err.message, "error");
+      toast("Falha no upload: " + err.message);
       return;
     }
     pendingFile = null;
     $("attach-preview").classList.add("hidden");
   }
-
   input.value = "";
-  input.style.height = "auto";
-  const msgRef = await push(ref(rtdb, `messages/${currentServerId}/${currentChannelId}`), base);
-  update(ref(rtdb, `channelMeta/${currentServerId}/${currentChannelId}`), { lastMsgAt: serverTimestamp() }).catch(() => {});
+  await push(ref(rtdb, `messages/${currentServerId}/${currentChannelId}`), base);
 });
 
-// ===================== UPLOAD (preview, progresso, cancelar, 5MB) =====================
 $("attach-btn").addEventListener("click", () => $("file-input").click());
 $("file-input").addEventListener("change", (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  if (file.size > MAX_UPLOAD) {
-    toast("Arquivo acima de 5MB. Escolha outro.", "error");
-    e.target.value = "";
-    return;
+  pendingFile = e.target.files[0];
+  if (pendingFile) {
+    $("attach-preview").textContent = "📎 " + pendingFile.name;
+    $("attach-preview").classList.remove("hidden");
   }
-  pendingFile = file;
-  const box = $("attach-preview");
-  const isImg = file.type.startsWith("image/");
-  const sizeKb = Math.round(file.size / 1024);
-  box.innerHTML = `
-    <div class="ap-info">
-      <div class="ap-name">${esc(file.name)}</div>
-      <div class="ap-size">${sizeKb < 1024 ? sizeKb + " KB" : (sizeKb / 1024).toFixed(1) + " MB"} · ${isImg ? "imagem" : "vídeo"}</div>
-      <div class="upload-error hidden" id="upload-error"></div>
-    </div>
-    <button class="icon-btn danger" id="cancel-upload" aria-label="Cancelar envio"></button>`;
-  box.querySelector("#cancel-upload").innerHTML = icon("x", 18);
-  box.querySelector("#cancel-upload").addEventListener("click", () => {
-    pendingFile = null;
-    box.classList.add("hidden");
-    $("file-input").value = "";
-  });
-  if (isImg) {
-    const thumb = document.createElement("img");
-    thumb.className = "ap-img";
-    thumb.src = URL.createObjectURL(file);
-    thumb.alt = "";
-    box.insertBefore(thumb, box.firstChild);
-  }
-  box.classList.remove("hidden");
 });
 
-// ===================== GIPHY PICKER =====================
-$("gif-btn").addEventListener("click", (e) => {
-  e.stopPropagation();
-  const picker = $("gif-picker");
-  $("emoji-picker").classList.add("hidden");
-  picker.classList.toggle("hidden");
-  if (picker.classList.contains("hidden")) return;
-  renderGiphyPicker(picker, {
-    onPick: (item) => {
-      // item is normalized from giphy.js
-      pendingGif = item;
-      $("composer-hint").classList.remove("hidden");
-      $("composer-hint").innerHTML = `${icon("film", 14)} <span>GIF pronto: ${esc(item.title || "GIF")} (clique em Enviar)</span> <button class="icon-btn" id="cancel-gif" aria-label="Cancelar GIF"></button>`;
-      $("composer-hint").querySelector("#cancel-gif").innerHTML = icon("x", 14);
-      $("composer-hint").querySelector("#cancel-gif").addEventListener("click", () => {
-        pendingGif = null;
-        $("composer-hint").classList.add("hidden");
-      });
-      picker.classList.add("hidden");
-    },
-    getFavs: () => userFavGifs || [],
-    toggleFav: async (item) => {
-      await toggleUserFav(item);
-    },
-    isFav: (item) => (userFavGifs || []).some((f) => f.id === item.id),
-  });
-});
+// ===================== STICKERS =====================
+const EMOJI_STICKERS = ["😀", "😂", "😍", "🔥", "🎉", "👍", "💀", "😭", "🤔", "❤️", "😎", "👀"];
 
-async function loadUserFavs() {
-  if (!currentUser) return;
-  try {
-    const snap = await get(ref(rtdb, `users/${currentUser.uid}/favorites/gifs`));
-    userFavGifs = snap.val() ? Object.values(snap.val()) : [];
-  } catch { userFavGifs = [] }
-  try {
-    const snap2 = await get(ref(rtdb, `users/${currentUser.uid}/favorites/stickers`));
-    userFavStickers = snap2.val() ? Object.values(snap2.val()) : [];
-  } catch { userFavStickers = [] }
-}
-
-async function toggleUserFav(item) {
-  if (!currentUser) { toast("Faça login para favoritar.", "info"); return; }
-  const path = `users/${currentUser.uid}/favorites/${item.type === 'sticker' ? 'stickers' : 'gifs'}/${item.id}`;
-  const snap = await get(ref(rtdb, path));
-  if (snap.exists()) {
-    await remove(ref(rtdb, path));
-    toast("Removido dos favoritos.", "info");
-  } else {
-    await set(ref(rtdb, path), { id: item.id, url: item.url, preview: item.preview, title: item.title, provider: item.provider, at: serverTimestamp() });
-    toast("Adicionado aos favoritos! ⭐", "success");
-  }
-  await loadUserFavs();
-}
-
-// ===================== STICKERS (customizadas) =====================
-$("sticker-btn").addEventListener("click", async (e) => {
-  e.stopPropagation();
+$("sticker-btn").addEventListener("click", async () => {
   const picker = $("sticker-picker");
   picker.classList.toggle("hidden");
   if (picker.classList.contains("hidden")) return;
-  // Reuse GIPHY picker but default to stickers tab
-  renderGiphyPicker(picker, {
-    onPick: async (item) => {
-      // send as sticker message
+  picker.innerHTML = "";
+  EMOJI_STICKERS.forEach((emoji) => {
+    const b = document.createElement("button");
+    b.textContent = emoji;
+    b.addEventListener("click", async () => {
       await push(ref(rtdb, `messages/${currentServerId}/${currentChannelId}`), {
         uid: currentUser.uid,
         authorName: userProfile.displayName,
         authorPhoto: userProfile.photoURL || "",
         authorColor: userProfile.accentColor || "#5ee6c4",
+        sticker: emoji,
         createdAt: serverTimestamp(),
-        type: item.type || 'sticker',
-        provider: item.provider || 'giphy',
-        gifId: item.id,
-        url: item.full || item.url,
-        preview: item.preview || item.url,
-        title: item.title || "",
       });
-      update(ref(rtdb, `channelMeta/${currentServerId}/${currentChannelId}`), { lastMsgAt: serverTimestamp() }).catch(() => {});
       picker.classList.add("hidden");
-    },
-    getFavs: () => userFavStickers || [],
-    toggleFav: async (item) => { await toggleUserFav(item); },
-    isFav: (item) => (userFavStickers || []).some((f) => f.id === item.id),
+    });
+    picker.appendChild(b);
   });
+  // Figurinhas customizadas do usuário
+  const snap = await get(ref(rtdb, `stickers/${currentUser.uid}`));
+  Object.values(snap.val() || {}).forEach((s) => {
+    const b = document.createElement("button");
+    b.innerHTML = `<img src="${s.url}" style="width:32px;height:32px;object-fit:cover;border-radius:4px" />`;
+    b.addEventListener("click", async () => {
+      await push(ref(rtdb, `messages/${currentServerId}/${currentChannelId}`), {
+        uid: currentUser.uid,
+        authorName: userProfile.displayName,
+        authorPhoto: userProfile.photoURL || "",
+        authorColor: userProfile.accentColor || "#5ee6c4",
+        stickerURL: s.url,
+        createdAt: serverTimestamp(),
+      });
+      picker.classList.add("hidden");
+    });
+    picker.appendChild(b);
+  });
+  const addBtn = document.createElement("button");
+  addBtn.textContent = "+";
+  addBtn.title = "Criar figurinha";
+  addBtn.addEventListener("click", () => {
+    const inp = document.createElement("input");
+    inp.type = "file";
+    inp.accept = "image/*";
+    inp.onchange = async () => {
+      const file = inp.files[0];
+      if (!file) return;
+      try {
+        const { url } = await uploadFile(file);
+        await push(ref(rtdb, `stickers/${currentUser.uid}`), { url, createdAt: serverTimestamp() });
+        toast("Figurinha criada!");
+      } catch (err) {
+        toast("Falha no upload: " + err.message);
+      }
+      picker.classList.add("hidden");
+    };
+    inp.click();
+  });
+  picker.appendChild(addBtn);
 });
 
-// ===================== RENDER MESSAGES (adjust to GIF/Stickers) =====================
-function renderMessage(container, m, grouped, dmMode) {
-  const el = document.createElement("div");
-  el.className = "msg" + (grouped ? " msg-grouped" : "");
-  el.dataset.msgId = m.id || "";
-
-  const avatarWrap = document.createElement("div");
-  avatarWrap.className = "avatar-wrap";
-  const avatar = document.createElement("img");
-  avatar.className = "avatar avatar-sm";
-  avatar.src = sanitizeUrl(m.authorPhoto) || defaultAvatar(m.uid);
-  avatar.alt = "";
-  avatar.loading = "lazy";
-  avatar.addEventListener("click", () => viewUserProfile(m.uid));
-  avatarWrap.appendChild(avatar);
-
-  const body = document.createElement("div");
-  body.className = "msg-body";
-  if (!grouped) {
-    const head = document.createElement("div");
-    head.className = "msg-head";
-    const author = document.createElement("span");
-    author.className = "msg-author";
-    author.textContent = m.authorName || "Usuário";
-    author.style.color = m.authorColor || "var(--text-0)";
-    author.addEventListener("click", () => viewUserProfile(m.uid));
-    head.appendChild(author);
-    const time = document.createElement("span");
-    time.className = "msg-time";
-    time.textContent = m.createdAt ? new Date(m.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "";
-    head.appendChild(time);
-    if (m.pinned) {
-      const pin = document.createElement("span");
-      pin.className = "msg-edited";
-      pin.textContent = "📌 fixado";
-      head.appendChild(pin);
-    }
-    if (m.edited) {
-      const ed = document.createElement("span");
-      ed.className = "msg-edited";
-      ed.textContent = "(editado)";
-      head.appendChild(ed);
-    }
-    body.appendChild(head);
-  }
-
-  if (m.text) {
-    const txt = document.createElement("div");
-    txt.className = "msg-text";
-    txt.textContent = m.text;
-    body.appendChild(txt);
-    appendLinkCards(body, m.text);
-  }
-
-  // GIF / Sticker handling
-  if (m.type === 'gif' || m.type === 'sticker') {
-    const wrap = document.createElement("div");
-    wrap.className = "msg-media";
-    const img = document.createElement("img");
-    img.src = sanitizeUrl(m.preview || m.url);
-    img.loading = "lazy";
-    img.alt = m.title || "GIF";
-    img.addEventListener("click", () => openLightbox(m.url || m.full || m.preview, m.type === 'gif' ? 'img' : 'img'));
-    wrap.appendChild(img);
-    body.appendChild(wrap);
-  } else if (m.gifUrl) {
-    const wrap = document.createElement("div");
-    wrap.className = "msg-media";
-    const img = document.createElement("img");
-    img.src = sanitizeUrl(m.gifUrl);
-    img.loading = "lazy";
-    img.alt = m.gifTitle || "GIF";
-    img.addEventListener("click", () => openLightbox(m.gifUrl, "img"));
-    wrap.appendChild(img);
-    body.appendChild(wrap);
-  } else if (m.stickerURL) {
-    const wrap = document.createElement("div");
-    wrap.className = "msg-sticker";
-    const img = document.createElement("img");
-    img.src = sanitizeUrl(m.stickerURL);
-    img.loading = "lazy";
-    img.alt = "";
-    wrap.appendChild(img);
-    body.appendChild(wrap);
-  } else if (m.imageURL) {
-    const wrap = document.createElement("div");
-    wrap.className = "msg-media";
-    const img = document.createElement("img");
-    img.src = sanitizeUrl(m.imageURL);
-    img.loading = "lazy";
-    img.alt = "";
-    img.addEventListener("click", () => openLightbox(m.imageURL, "img"));
-    wrap.appendChild(img);
-    body.appendChild(wrap);
-  } else if (m.videoURL) {
-    const wrap = document.createElement("div");
-    wrap.className = "msg-media";
-    const vid = document.createElement("video");
-    vid.src = sanitizeUrl(m.videoURL);
-    vid.controls = true;
-    vid.preload = "metadata";
-    wrap.appendChild(vid);
-    body.appendChild(wrap);
-  } else if (m.sticker) {
-    const wrap = document.createElement("div");
-    wrap.className = "msg-sticker";
-    wrap.textContent = m.sticker;
-    body.appendChild(wrap);
-  }
-
-  if (m.reactions) renderReactions(body, m);
-
-  el.appendChild(avatarWrap);
-  el.appendChild(body);
-  if (dmMode) el.appendChild(buildDmActions(el, m));
-  else el.appendChild(buildMsgActions(el, m));
-  container.appendChild(el);
+// ===================== FÓRUM =====================
+function listenForum() {
+  const path = `posts/${currentServerId}/${currentChannelId}`;
+  if (unsubForumPosts) off(ref(rtdb, unsubForumPosts.path), "value", unsubForumPosts.cb);
+  const pRef = ref(rtdb, path);
+  const cb = onValue(pRef, (snap) => {
+    const root = $("forum-posts");
+    root.innerHTML = "";
+    root.classList.remove("hidden");
+    $("forum-thread").classList.add("hidden");
+    const val = snap.val() || {};
+    const entries = Object.entries(val).sort((a, b) => (b[1].createdAt || 0) - (a[1].createdAt || 0));
+    entries.forEach(([id, p]) => {
+      const card = document.createElement("div");
+      card.className = "forum-post-card";
+      const time = p.createdAt ? new Date(p.createdAt).toLocaleString("pt-BR") : "";
+      card.innerHTML = `<h3>${escapeHTML(p.title)}</h3><div class="meta">por ${escapeHTML(p.authorName)} · ${time}</div><p>${escapeHTML((p.body || "").slice(0, 140))}${p.body?.length > 140 ? "…" : ""}</p>`;
+      card.addEventListener("click", () => openThread(id, p));
+      root.appendChild(card);
+    });
+    if (!entries.length) root.innerHTML = '<p class="empty-hint">Nenhum tópico ainda. Crie o primeiro!</p>';
+  });
+  unsubForumPosts = { path, cb };
 }
 
-// ... rest of file unchanged ...
+function openThread(postId, post) {
+  $("forum-posts").classList.add("hidden");
+  $("forum-thread").classList.remove("hidden");
+  const time = post.createdAt ? new Date(post.createdAt).toLocaleString("pt-BR") : "";
+  $("forum-thread-content").innerHTML = `
+    <h2>${escapeHTML(post.title)}</h2>
+    <div class="meta" style="color:var(--text-2);font-size:12px;margin-bottom:12px">por ${escapeHTML(post.authorName)} · ${time}</div>
+    <p style="line-height:1.6">${escapeHTML(post.body)}</p>
+    <hr style="border-color:var(--line);margin:16px 0" />
+    <div id="thread-replies"></div>
+    <form id="reply-form" style="display:flex;gap:8px;margin-top:12px">
+      <input id="reply-input" type="text" placeholder="Responder..." style="flex:1" />
+      <button class="btn-primary" type="submit">Responder</button>
+    </form>`;
+  const repliesPath = `replies/${currentServerId}/${currentChannelId}/${postId}`;
+  if (unsubForumReplies) off(ref(rtdb, unsubForumReplies.path), "value", unsubForumReplies.cb);
+  const rRef = ref(rtdb, repliesPath);
+  const cb = onValue(rRef, (snap) => {
+    const box = $("thread-replies");
+    if (!box) return;
+    box.innerHTML = "";
+    const val = snap.val() || {};
+    Object.values(val)
+      .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
+      .forEach((r) => {
+        const el = document.createElement("div");
+        el.style.cssText = "padding:8px 0;border-top:1px solid var(--line);font-size:14px";
+        el.innerHTML = `<b>${escapeHTML(r.authorName)}:</b> ${escapeHTML(r.text)}`;
+        box.appendChild(el);
+      });
+  });
+  unsubForumReplies = { path: repliesPath, cb };
+
+  $("reply-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const inp = $("reply-input");
+    if (!inp.value.trim()) return;
+    await push(ref(rtdb, repliesPath), {
+      uid: currentUser.uid, authorName: userProfile.displayName, text: inp.value.trim(), createdAt: serverTimestamp(),
+    });
+    inp.value = "";
+  });
+}
+
+$("new-post-btn").addEventListener("click", () => openModal("modal-new-post"));
+$("back-to-forum").addEventListener("click", () => {
+  $("forum-thread").classList.add("hidden");
+  $("forum-posts").classList.remove("hidden");
+});
+$("confirm-new-post").addEventListener("click", async () => {
+  const title = $("new-post-title").value.trim();
+  const body = $("new-post-body").value.trim();
+  if (!title || !body) { toast("Preencha título e conteúdo."); return; }
+  await push(ref(rtdb, `posts/${currentServerId}/${currentChannelId}`), {
+    title, body, uid: currentUser.uid, authorName: userProfile.displayName, createdAt: serverTimestamp(),
+  });
+  $("new-post-title").value = ""; $("new-post-body").value = "";
+  closeModals();
+});
+
+// ===================== VOZ / VÍDEO =====================
+function setupVoiceView(ch) {
+  $("voice-channel-name").textContent = "🔊 " + ch.name;
+  $("join-voice-btn").classList.remove("hidden");
+  $("leave-voice-btn").classList.add("hidden");
+  $("toggle-mic-btn").classList.add("hidden");
+  $("toggle-cam-btn").classList.add("hidden");
+  $("video-grid").innerHTML = "";
+}
+
+$("join-voice-btn").addEventListener("click", async () => {
+  try {
+    await joinVoiceChannel({
+      serverId: currentServerId,
+      channelId: currentChannelId,
+      uid: currentUser.uid,
+      displayName: userProfile.displayName,
+    });
+    $("join-voice-btn").classList.add("hidden");
+    $("leave-voice-btn").classList.remove("hidden");
+    $("toggle-mic-btn").classList.remove("hidden");
+    $("toggle-cam-btn").classList.remove("hidden");
+  } catch (err) {
+    toast("Não deu pra acessar microfone/câmera: " + err.message);
+  }
+});
+$("leave-voice-btn").addEventListener("click", () => {
+  leaveVoiceChannel();
+  $("join-voice-btn").classList.remove("hidden");
+  $("leave-voice-btn").classList.add("hidden");
+  $("toggle-mic-btn").classList.add("hidden");
+  $("toggle-cam-btn").classList.add("hidden");
+});
+$("toggle-mic-btn").addEventListener("click", (e) => {
+  const on = window.devcordToggleMic?.();
+  e.target.style.color = on ? "" : "var(--danger)";
+});
+$("toggle-cam-btn").addEventListener("click", (e) => {
+  const on = window.devcordToggleCam?.();
+  e.target.style.color = on ? "" : "var(--danger)";
+});
+
+// ===================== PERFIL =====================
+$("open-profile-btn").addEventListener("click", () => {
+  $("profile-avatar-preview").src = userProfile.photoURL || defaultAvatar(currentUser.uid);
+  $("profile-name-input").value = userProfile.displayName || "";
+  $("profile-bio-input").value = userProfile.bio || "";
+  $("profile-color-input").value = userProfile.accentColor || "#5ee6c4";
+  $("profile-font-input").value = userProfile.nameFont || "Inter";
+  $("profile-social-input").value = userProfile.socialLinks || "";
+  $("profile-banner-preview").style.background = userProfile.bannerURL
+    ? `url(${userProfile.bannerURL}) center/cover`
+    : "linear-gradient(135deg, var(--accent-dim), var(--bg-3))";
+  openModal("modal-profile");
+});
+
+let newAvatarFile = null, newBannerFile = null;
+$("profile-avatar-input").addEventListener("change", (e) => {
+  newAvatarFile = e.target.files[0];
+  if (newAvatarFile) $("profile-avatar-preview").src = URL.createObjectURL(newAvatarFile);
+});
+$("profile-banner-input").addEventListener("change", (e) => {
+  newBannerFile = e.target.files[0];
+  if (newBannerFile) $("profile-banner-preview").style.background = `url(${URL.createObjectURL(newBannerFile)}) center/cover`;
+});
+
+$("confirm-profile").addEventListener("click", async () => {
+  const updates = {
+    displayName: $("profile-name-input").value.trim() || userProfile.displayName,
+    bio: $("profile-bio-input").value.trim(),
+    accentColor: $("profile-color-input").value,
+    nameFont: $("profile-font-input").value,
+    socialLinks: $("profile-social-input").value.trim(),
+  };
+  try {
+    if (newAvatarFile) {
+      const { url } = await uploadFile(newAvatarFile);
+      updates.photoURL = url;
+    }
+    if (newBannerFile) {
+      const { url } = await uploadFile(newBannerFile);
+      updates.bannerURL = url;
+    }
+  } catch (err) {
+    toast("Falha no upload: " + err.message);
+    return;
+  }
+  await update(ref(rtdb, `users/${currentUser.uid}`), updates);
+  await updateProfile(currentUser, { displayName: updates.displayName, photoURL: updates.photoURL || userProfile.photoURL || "" });
+  userProfile = { ...userProfile, ...updates };
+  newAvatarFile = null; newBannerFile = null;
+  renderUserCard();
+  closeModals();
+  toast("Perfil atualizado!");
+});
+
+$("logout-btn").addEventListener("click", async () => {
+  leaveVoiceChannel();
+  await signOut(auth);
+  closeModals();
+});

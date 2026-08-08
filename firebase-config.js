@@ -21,7 +21,7 @@ const firebaseConfig = {
   authDomain: "devcord-4dcf6.firebaseapp.com",
   databaseURL: "https://devcord-4dcf6-default-rtdb.firebaseio.com",
   projectId: "devcord-4dcf6",
-  storageBucket: "devcord-4dcf6.appspot.com",
+  storageBucket: "devcord-4dcf6.firebasestorage.app",
   messagingSenderId: "168388878048",
   appId: "1:168388878048:web:c4b9628253e4b46c077a85",
 };

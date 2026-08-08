@@ -2,53 +2,51 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-<meta name="theme-color" content="#0e1013" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>DevCord</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script>
-  (function () {
-    var t = null;
-    try { t = localStorage.getItem("devcord-theme"); } catch (e) {}
-    if (!t) t = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
-    document.documentElement.setAttribute("data-theme", t);
-  })();
-</script>
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
 <!-- ===================== TELA DE AUTENTICAÇÃO ===================== -->
 <div id="auth-screen" class="auth-screen">
-  <button class="icon-btn auth-theme" id="auth-theme-btn" data-tooltip="Trocar tema" aria-label="Trocar tema"></button>
   <div class="auth-card">
     <div class="auth-brand">
-      <div class="auth-logo" aria-hidden="true">DC</div>
+      <div class="auth-logo">DC</div>
       <h1>DevCord</h1>
       <p>Seu cantinho pra conversar, ligar e criar comunidades.</p>
     </div>
-    <div class="auth-tabs" role="tablist" aria-label="Autenticação">
-      <button class="auth-tab active" data-tab="login" role="tab" aria-selected="true">Entrar</button>
-      <button class="auth-tab" data-tab="register" role="tab" aria-selected="false">Criar conta</button>
+
+    <div class="auth-tabs">
+      <button class="auth-tab active" data-tab="login">Entrar</button>
+      <button class="auth-tab" data-tab="register">Criar conta</button>
     </div>
+
     <form id="login-form" class="auth-form">
-      <label for="login-email">Email</label>
-      <input type="email" id="login-email" required placeholder="voce@email.com" autocomplete="email" />
-      <label for="login-password">Senha</label>
-      <input type="password" id="login-password" required placeholder="••••••••" autocomplete="current-password" />
-      <p class="auth-error" id="login-error" role="alert"></p>
-      <button type="submit" class="btn btn-primary btn-block">Entrar</button>
+      <label>Email
+        <input type="email" id="login-email" required placeholder="voce@email.com" />
+      </label>
+      <label>Senha
+        <input type="password" id="login-password" required placeholder="••••••••" />
+      </label>
+      <p class="auth-error" id="login-error"></p>
+      <button type="submit" class="btn-primary">Entrar</button>
     </form>
+
     <form id="register-form" class="auth-form hidden">
-      <label for="register-name">Nome de exibição</label>
-      <input type="text" id="register-name" required placeholder="Como te chamam" maxlength="32" autocomplete="nickname" />
-      <label for="register-email">Email</label>
-      <input type="email" id="register-email" required placeholder="voce@email.com" autocomplete="email" />
-      <label for="register-password">Senha</label>
-      <input type="password" id="register-password" required placeholder="Mínimo 6 caracteres" minlength="6" autocomplete="new-password" />
-      <p class="auth-error" id="register-error" role="alert"></p>
-      <button type="submit" class="btn btn-primary btn-block">Criar conta</button>
+      <label>Nome de exibição
+        <input type="text" id="register-name" required placeholder="Como te chamam" maxlength="32" />
+      </label>
+      <label>Email
+        <input type="email" id="register-email" required placeholder="voce@email.com" />
+      </label>
+      <label>Senha
+        <input type="password" id="register-password" required placeholder="Mínimo 6 caracteres" minlength="6" />
+      </label>
+      <p class="auth-error" id="register-error"></p>
+      <button type="submit" class="btn-primary">Criar conta</button>
     </form>
   </div>
 </div>
@@ -56,140 +54,171 @@
 <!-- ===================== APP PRINCIPAL ===================== -->
 <div id="app" class="app hidden">
 
-  <!-- Trilho de servidores (desktop) / barra superior (mobile) -->
-  <nav class="server-rail" id="server-rail" aria-label="Servidores">
-    <button class="server-pill server-pill-home active" id="home-pill" data-tooltip="Início" aria-label="Início" aria-current="page">DC</button>
-    <div class="server-divider" aria-hidden="true"></div>
-    <div class="server-list" id="server-list" role="list"></div>
-    <button class="server-pill server-pill-add" id="add-server-btn" data-tooltip="Criar ou entrar em servidor" aria-label="Criar ou entrar em servidor">+</button>
+  <!-- Trilho de servidores -->
+  <nav class="server-rail" id="server-rail">
+    <button class="server-pill server-pill-home active" id="home-pill" title="Início">DC</button>
+    <div class="server-divider"></div>
+    <div class="server-list" id="server-list"></div>
+    <button class="server-pill server-pill-add" id="add-server-btn" title="Criar servidor">+</button>
   </nav>
 
   <!-- Sidebar de canais -->
-  <aside class="channel-sidebar" id="channel-sidebar" aria-label="Canais">
+  <aside class="channel-sidebar">
     <div class="server-header" id="server-header">
-      <span class="server-header-name" id="current-server-name">Bem-vindo</span>
-      <button id="server-settings-btn" class="icon-btn hidden" data-tooltip="Configurações do servidor" aria-label="Configurações do servidor"></button>
+      <span id="current-server-name">Bem-vindo</span>
+      <button id="server-settings-btn" class="icon-btn hidden" title="Configurações do servidor">⚙</button>
     </div>
-    <div class="channel-groups" id="channel-groups" role="list"></div>
 
+    <div class="channel-groups" id="channel-groups">
+      <p class="empty-hint">Crie ou entre em um servidor pra ver os canais aqui.</p>
+    </div>
+
+    <!-- Cartão do usuário -->
     <div class="user-card" id="user-card">
-      <div class="avatar-wrap">
-        <img id="user-card-avatar" class="avatar avatar-sm" src="" alt="" />
-        <span class="presence-dot" id="user-card-presence"></span>
-      </div>
-      <div class="user-card-info" id="user-card-info">
+      <img id="user-card-avatar" class="avatar avatar-sm" src="" alt="" />
+      <div class="user-card-info">
         <span id="user-card-name">—</span>
-        <span class="user-card-status" id="user-card-status"><span class="pd" aria-hidden="true"></span> Online</span>
+        <span id="user-card-status" class="user-card-status">Online</span>
       </div>
-      <button id="status-menu-btn" class="icon-btn" data-tooltip="Definir status" aria-label="Definir status"></button>
-      <button id="open-profile-btn" class="icon-btn" data-tooltip="Editar perfil" aria-label="Editar perfil"></button>
+      <button id="open-profile-btn" class="icon-btn" title="Editar perfil">✎</button>
     </div>
   </aside>
 
   <!-- Área principal -->
-  <div class="main-wrap">
-
+  <main class="main-area">
     <header class="main-header">
-      <div class="main-header-left">
-        <button id="mobile-menu-btn" class="icon-btn" data-tooltip="Menu" aria-label="Abrir menu de canais"></button>
-        <div class="channel-title" id="channel-title">
-          <span class="ct-name" id="channel-title-name"># selecione-um-canal</span>
-        </div>
-      </div>
+      <span id="channel-title"># selecione-um-canal</span>
       <div class="main-header-actions">
-        <button id="gallery-btn" class="icon-btn hidden" data-tooltip="Galeria de mídia" aria-label="Galeria de mídia"></button>
-        <button id="search-btn" class="icon-btn" data-tooltip="Buscar mensagens" aria-label="Buscar mensagens"></button>
-        <button id="friends-btn" class="icon-btn" data-tooltip="Amigos" aria-label="Amigos"></button>
-        <button id="notif-btn" class="icon-btn" data-tooltip="Notificações" aria-label="Notificações"></button>
-        <button id="theme-btn" class="icon-btn" data-tooltip="Trocar tema" aria-label="Trocar tema"></button>
-        <button id="call-btn" class="icon-btn hidden" data-tooltip="Chamada de voz/vídeo" aria-label="Chamada de voz/vídeo"></button>
+        <button id="call-btn" class="icon-btn hidden" title="Chamada de voz/vídeo">📞</button>
       </div>
     </header>
 
     <!-- Vista: chat de texto -->
-    <section id="view-text" class="view" aria-label="Chat">
-      <div class="messages" id="messages" tabindex="0"></div>
-      <div class="typing-indicator" id="typing-indicator" aria-live="polite"></div>
-      <div class="composer-wrap" id="composer-wrap">
-        <div id="attach-preview" class="attach-preview hidden"></div>
-        <form id="message-form" class="message-form">
-          <button type="button" id="attach-btn" class="icon-btn" data-tooltip="Anexar imagem/vídeo" aria-label="Anexar imagem ou vídeo"></button>
-          <input type="file" id="file-input" accept="image/*,video/*" class="hidden" />
-          <button type="button" id="gif-btn" class="icon-btn" data-tooltip="GIFs e figurinhas" aria-label="Abrir seletor de GIFs"></button>
-          <button type="button" id="emoji-btn" class="icon-btn" data-tooltip="Emojis" aria-label="Abrir seletor de emojis"></button>
-          <button type="button" id="sticker-btn" class="icon-btn hidden" data-tooltip="Figurinhas" aria-label="Figurinhas"></button>
-          <textarea id="message-input" placeholder="Mandar mensagem..." autocomplete="off" maxlength="5000" rows="1" aria-label="Mensagem"></textarea>
-          <button type="submit" class="btn btn-primary btn-send" id="send-btn" aria-label="Enviar"></button>
-        </form>
-        <div class="composer-hint hidden" id="composer-hint"></div>
-        <div id="emoji-picker" class="picker-panel hidden"></div>
-        <div id="gif-picker" class="picker-panel hidden"></div>
-        <div id="sticker-picker" class="picker-panel hidden"></div>
-      </div>
+    <section id="view-text" class="view">
+      <div class="messages" id="messages"></div>
+      <form id="message-form" class="message-form">
+        <button type="button" id="attach-btn" class="icon-btn" title="Anexar imagem/vídeo">📎</button>
+        <input type="file" id="file-input" accept="image/*,video/*" class="hidden" />
+        <button type="button" id="sticker-btn" class="icon-btn" title="Figurinhas">🩹</button>
+        <input type="text" id="message-input" placeholder="Mandar mensagem..." autocomplete="off" />
+        <button type="submit" class="btn-primary btn-send">Enviar</button>
+      </form>
+      <div id="sticker-picker" class="sticker-picker hidden"></div>
+      <div id="attach-preview" class="attach-preview hidden"></div>
     </section>
 
     <!-- Vista: canal de voz -->
-    <section id="view-voice" class="view hidden" aria-label="Canal de voz">
+    <section id="view-voice" class="view hidden">
       <div class="voice-stage">
         <h2 id="voice-channel-name">Canal de voz</h2>
-        <div class="call-layout">
-          <div class="call-main">
-            <div class="voice-participants" id="voice-participants"></div>
-            <div class="video-grid" id="video-grid"></div>
-          </div>
-          <div class="call-chat" id="call-chat">
-            <div class="cc-msgs" id="call-chat-msgs"></div>
-            <form class="cc-form" id="call-chat-form">
-              <input type="text" id="call-chat-input" placeholder="Chat durante a call..." maxlength="5000" aria-label="Chat da chamada" />
-              <button type="submit" class="icon-btn" aria-label="Enviar no chat da chamada"></button>
-            </form>
-          </div>
+        <div class="voice-participants" id="voice-participants"></div>
+        <div class="voice-controls">
+          <button id="join-voice-btn" class="btn-primary">Entrar no canal de voz</button>
+          <button id="leave-voice-btn" class="btn-secondary hidden">Sair</button>
+          <button id="toggle-mic-btn" class="icon-btn hidden" title="Mutar/desmutar">🎙</button>
+          <button id="toggle-cam-btn" class="icon-btn hidden" title="Câmera">🎥</button>
         </div>
-        <div class="voice-controls" id="voice-controls">
-          <button id="join-voice-btn" class="btn btn-primary">Entrar no canal de voz</button>
-          <button id="toggle-mic-btn" class="icon-btn hidden" data-tooltip="Mutar/desmutar mic" aria-label="Mutar ou desmutar microfone"></button>
-          <button id="toggle-cam-btn" class="icon-btn hidden" data-tooltip="Câmera" aria-label="Ligar ou desligar câmera"></button>
-          <button id="toggle-deaf-btn" class="icon-btn hidden" data-tooltip="Ensurdecer" aria-label="Ensurdecer ou ouvir de novo"></button>
-          <button id="toggle-share-btn" class="icon-btn hidden" data-tooltip="Compartilhar tela" aria-label="Compartilhar ou parar de compartilhar tela"></button>
-          <button id="leave-voice-btn" class="btn btn-danger hidden">Sair</button>
-        </div>
+        <div class="video-grid" id="video-grid"></div>
       </div>
     </section>
 
     <!-- Vista: fórum -->
-    <section id="view-forum" class="view hidden" aria-label="Fórum">
+    <section id="view-forum" class="view hidden">
       <div class="forum-toolbar">
-        <button id="new-post-btn" class="btn btn-primary">Novo tópico</button>
+        <button id="new-post-btn" class="btn-primary">Novo tópico</button>
       </div>
       <div class="forum-posts" id="forum-posts"></div>
       <div class="forum-thread hidden" id="forum-thread">
-        <button id="back-to-forum" class="btn btn-secondary"><span id="back-to-forum-label">← Voltar</span></button>
+        <button id="back-to-forum" class="btn-secondary">← Voltar</button>
         <div id="forum-thread-content"></div>
       </div>
     </section>
-
-  </div>
+  </main>
 </div>
 
-<!-- ===================== DRAWERS ===================== -->
-<div class="drawer-overlay hidden" id="drawer-overlay"></div>
+<!-- ===================== MODAIS ===================== -->
 
-<div class="drawer hidden" id="friends-drawer" role="dialog" aria-modal="true" aria-label="Amigos">
-  <div class="drawer-header">
-    <strong>Amigos</strong>
-    <button class="icon-btn drawer-close" aria-label="Fechar amigos"></button>
-  </div>
-  <div class="friend-tabs" id="friend-tabs">
-    <button class="active" data-f="online">Online</button>
-    <button data-f="all">Todos</button>
-    <button data-f="pending">Pendentes <span class="badge badge-sm hidden" id="friend-pending-badge">0</span></button>
-    <button data-f="blocked">Bloqueados</button>
-  </div>
-  <div class="drawer-body">
-    <div class="search-panel" style="margin-bottom:10px">
-      <input type="text" id="friend-add-input" placeholder="Adicionar amigo (email)" aria-label="Email do amigo" />
-      <button class="btn btn-primary btn-sm" id="friend-add-btn">Enviar solicitação</button>
+<div class="modal-overlay hidden" id="modal-overlay">
+
+  <div class="modal hidden" id="modal-create-server">
+    <h2>Criar servidor</h2>
+    <label>Nome do servidor
+      <input type="text" id="new-server-name" maxlength="40" placeholder="Ex: Galera do Código" />
+    </label>
+    <label>Ícone (opcional)
+      <input type="file" id="new-server-icon" accept="image/*" />
+    </label>
+    <div class="modal-actions">
+      <button class="btn-secondary modal-cancel">Cancelar</button>
+      <button class="btn-primary" id="confirm-create-server">Criar</button>
     </div>
-    <div class="friend-list" id="friend-list"></div>
   </div>
+
+  <div class="modal hidden" id="modal-create-channel">
+    <h2>Criar canal</h2>
+    <label>Nome do canal
+      <input type="text" id="new-channel-name" maxlength="30" placeholder="ex: geral" />
+    </label>
+    <label>Tipo
+      <select id="new-channel-type">
+        <option value="text">💬 Texto</option>
+        <option value="voice">🔊 Voz</option>
+        <option value="forum">🗂 Fórum</option>
+      </select>
+    </label>
+    <div class="modal-actions">
+      <button class="btn-secondary modal-cancel">Cancelar</button>
+      <button class="btn-primary" id="confirm-create-channel">Criar</button>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="modal-profile">
+    <h2>Seu perfil</h2>
+    <div class="profile-edit-preview">
+      <div class="profile-banner" id="profile-banner-preview"></div>
+      <img id="profile-avatar-preview" class="avatar avatar-lg" src="" alt="" />
+    </div>
+    <label>Foto de perfil <input type="file" id="profile-avatar-input" accept="image/*" /></label>
+    <label>Banner <input type="file" id="profile-banner-input" accept="image/*" /></label>
+    <label>Nome de exibição <input type="text" id="profile-name-input" maxlength="32" /></label>
+    <label>Bio <textarea id="profile-bio-input" maxlength="190" rows="3"></textarea></label>
+    <label>Cor de destaque
+      <input type="color" id="profile-color-input" value="#5ee6c4" />
+    </label>
+    <label>Fonte do nick
+      <select id="profile-font-input">
+        <option value="Inter">Padrão</option>
+        <option value="'Space Grotesk'">Space Grotesk</option>
+        <option value="'JetBrains Mono'">Mono</option>
+        <option value="cursive">Cursiva</option>
+      </select>
+    </label>
+    <label>Redes sociais
+      <input type="text" id="profile-social-input" placeholder="ex: instagram.com/seuuser, github.com/seuuser" />
+    </label>
+    <div class="modal-actions">
+      <button class="btn-secondary modal-cancel">Cancelar</button>
+      <button class="btn-primary" id="confirm-profile">Salvar</button>
+    </div>
+    <button class="btn-secondary logout-btn" id="logout-btn">Sair da conta</button>
+  </div>
+
+  <div class="modal hidden" id="modal-new-post">
+    <h2>Novo tópico</h2>
+    <label>Título <input type="text" id="new-post-title" maxlength="120" /></label>
+    <label>Conteúdo <textarea id="new-post-body" rows="5" maxlength="4000"></textarea></label>
+    <div class="modal-actions">
+      <button class="btn-secondary modal-cancel">Cancelar</button>
+      <button class="btn-primary" id="confirm-new-post">Publicar</button>
+    </div>
+  </div>
+
 </div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script type="module" src="firebase-config.js"></script>
+<script type="module" src="auth.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
