@@ -8,13 +8,28 @@
 // Random endpoints included as well.
 // Recents ficam em localStorage; favoritos são armazenáveis via callback (o app decide se usa RTDB em users/{uid}/favorites).
 
-export const GIPHY_API_KEY = "4oiQw1BQJm2AnCaYb8IX57wCt5sz5eBQ";
+export const GIPHY_API_KEY = "4oiQw1BQJm2AnCaYb8IX57wCt5sz5eBQ"; // fallback public key
 const BASE = "https://api.giphy.com/v1";
 
 const LS_RECENT = "devcord-giphy-recents"; // array de itens {id, kind, title, url, full, preview, width, height}
+const LS_KEY = "devcord-giphy-key"; // override key in localStorage
 
 function lsGet(key, def) { try { return JSON.parse(localStorage.getItem(key)) || def; } catch { return def; } }
 function lsSet(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch {} }
+
+export function setGiphyKey(key) {
+  try {
+    if (!key) localStorage.removeItem(LS_KEY);
+    else localStorage.setItem(LS_KEY, key.trim());
+  } catch {}
+}
+export function getGiphyKey() {
+  try {
+    const k = localStorage.getItem(LS_KEY);
+    if (k) return k;
+  } catch {}
+  return GIPHY_API_KEY;
+}
 
 async function giphyFetch(url) {
   const res = await fetch(url);
@@ -28,7 +43,7 @@ async function giphyFetch(url) {
 
 function pickPreview(images) {
   // tenta várias versões de preview pequenas
-  return images?.fixed_width_small?.url || images?.preview_gif?.url || images?.fixed_width_downsampled?.url || images?.fixed_height_small_still?.url || images?.fixed_width?.url || images?.original_still?.url || images?.original?.url || "";
+  return images?.fixed_width_small?.url || images?.preview_gif?.url || images?.fixed_width_downsampled?.url || images?.fixed_height_small_still?.url || images?.fixed_width?.url || images?.original?.url || "";
 }
 
 function normalizeGif(g) {
@@ -71,21 +86,29 @@ function normalizeArray(data, kind) {
   return data.map(normalizeGif);
 }
 
+function buildUrl(path, params = {}) {
+  const apiKey = getGiphyKey();
+  const url = new URL(BASE + path);
+  url.searchParams.set("api_key", apiKey);
+  Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null) url.searchParams.set(k, v); });
+  return url.toString();
+}
+
 export async function searchGifs(term, offset = 0, limit = 24) {
   const q = term || "";
-  const url = `${BASE}/gifs/search?api_key=${encodeURIComponent(GIPHY_API_KEY)}&q=${encodeURIComponent(q)}&limit=${limit}&offset=${offset}&rating=g&lang=pt`;
+  const url = buildUrl('/gifs/search', { q, limit, offset, rating: 'g', lang: 'pt' });
   const json = await giphyFetch(url);
   return { items: normalizeArray(json.data, "gif"), pagination: json.pagination || {} };
 }
 
 export async function trendingGifs(offset = 0, limit = 24) {
-  const url = `${BASE}/gifs/trending?api_key=${encodeURIComponent(GIPHY_API_KEY)}&limit=${limit}&offset=${offset}&rating=g`;
+  const url = buildUrl('/gifs/trending', { limit, offset, rating: 'g' });
   const json = await giphyFetch(url);
   return { items: normalizeArray(json.data, "gif"), pagination: json.pagination || {} };
 }
 
 export async function randomGif(tag = "") {
-  const url = `${BASE}/gifs/random?api_key=${encodeURIComponent(GIPHY_API_KEY)}&tag=${encodeURIComponent(tag)}&rating=g`;
+  const url = buildUrl('/gifs/random', { tag, rating: 'g' });
   const json = await giphyFetch(url);
   const g = json.data;
   if (!g) return null;
@@ -94,19 +117,19 @@ export async function randomGif(tag = "") {
 
 export async function searchStickers(term, offset = 0, limit = 24) {
   const q = term || "";
-  const url = `${BASE}/stickers/search?api_key=${encodeURIComponent(GIPHY_API_KEY)}&q=${encodeURIComponent(q)}&limit=${limit}&offset=${offset}&rating=g`;
+  const url = buildUrl('/stickers/search', { q, limit, offset, rating: 'g' });
   const json = await giphyFetch(url);
   return { items: normalizeArray(json.data, "sticker"), pagination: json.pagination || {} };
 }
 
 export async function trendingStickers(offset = 0, limit = 24) {
-  const url = `${BASE}/stickers/trending?api_key=${encodeURIComponent(GIPHY_API_KEY)}&limit=${limit}&offset=${offset}&rating=g`;
+  const url = buildUrl('/stickers/trending', { limit, offset, rating: 'g' });
   const json = await giphyFetch(url);
   return { items: normalizeArray(json.data, "sticker"), pagination: json.pagination || {} };
 }
 
 export async function randomSticker(tag = "") {
-  const url = `${BASE}/stickers/random?api_key=${encodeURIComponent(GIPHY_API_KEY)}&tag=${encodeURIComponent(tag)}&rating=g`;
+  const url = buildUrl('/stickers/random', { tag, rating: 'g' });
   const json = await giphyFetch(url);
   const g = json.data;
   if (!g) return null;
@@ -248,8 +271,22 @@ export function renderGiphyPicker(root, opts) {
       if (!data.items.length || offset >= (data.pagination?.total_count ?? Infinity)) done = true;
       else done = false;
     } catch (err) {
-      body.innerHTML = `<div class="error-state"><h3>Falha ao carregar</h3><p>${err.message}</p><button class="btn btn-secondary btn-sm" id="giphy-retry">Tentar novamente</button></div>`;
-      body.querySelector("#giphy-retry")?.addEventListener("click", () => { done = false; load(); });
+      // se for erro de chave inválida oferecemos config rápida
+      if (err && err.message && err.message.includes('Chave do GIPHY')) {
+        body.innerHTML = `<div class="error-state"><h3>Falha ao carregar</h3><p>Chave do GIPHY inválida ou sem permissão.</p><div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-primary" id="giphy-config">Configurar chave</button><button class="btn btn-secondary" id="giphy-retry">Tentar novamente</button></div></div>`;
+        body.querySelector('#giphy-config')?.addEventListener('click', () => {
+          try {
+            const k = window.prompt('Cole sua GIPHY API Key:');
+            if (!k) return;
+            setGiphyKey(k);
+            done = false; offset = 0; body.innerHTML = ''; load();
+          } catch (e) {}
+        });
+        body.querySelector('#giphy-retry')?.addEventListener('click', () => { done = false; load(); });
+      } else {
+        body.innerHTML = `<div class="error-state"><h3>Falha ao carregar</h3><p>${escErr(err)}</p><button class="btn btn-secondary btn-sm" id="giphy-retry">Tentar novamente</button></div>`;
+        body.querySelector("#giphy-retry")?.addEventListener("click", () => { done = false; load(); });
+      }
     } finally {
       loading = false;
     }
@@ -262,11 +299,15 @@ export function renderGiphyPicker(root, opts) {
   // footer with attribution (GIPHY requirement)
   const footer = document.createElement('div');
   footer.className = 'picker-footer';
-  footer.innerHTML = `<div style="display:flex;align-items:center;gap:8px"><img src="https://developers.giphy.com/static/img/dev-logo-lg.7404c00322a8.gif" alt="GIPHY" style="height:20px;"/> <small style="color:var(--text-2);">Powered by GIPHY</small></div>`;
+  footer.innerHTML = `<div style="display:flex;align-items:center;gap:8px"><img src="https://developers.giphy.com/static/img/dev-logo-lg.7404c00322a8.gif" alt="GIPHY" style="height:20px;opacity:.9"/> <small style="color:var(--text-2);font-size:12px">Powered by GIPHY</small></div>`;
   root.appendChild(footer);
 
   load();
   return { close: () => {} };
+}
+
+function escErr(err) {
+  try { return String(err.message || err || 'Erro desconhecido'); } catch { return 'Erro desconhecido'; }
 }
 
 function toastSmall(msg) {
