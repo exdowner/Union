@@ -57,6 +57,12 @@
             <button type="button" class="server-pill server-pill-add" id="add-server-btn" title="Criar servidor">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
             </button>
+            <button type="button" class="server-pill server-pill-discover" id="discover-btn" title="Descobrir servidores">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>
+                </svg>
+            </button>
         </nav>
 
         <aside class="channel-sidebar">
@@ -70,12 +76,12 @@
                 <p class="empty-hint">Crie ou entre em um servidor para ver os canais aqui.</p>
             </div>
             <div class="user-card" id="user-card">
-                <div class="user-card-avatar-wrap">
+                <div class="user-card-avatar-wrap" data-user-id="">
                     <img id="user-card-avatar" class="avatar avatar-sm" src="" alt="">
                     <span id="user-card-status-dot" class="status-dot status-online"></span>
                 </div>
                 <div class="user-card-info">
-                    <span id="user-card-name">—</span>
+                    <span id="user-card-name" data-user-id="">—</span>
                     <span id="user-card-status" class="user-card-status">Online</span>
                 </div>
                 <button type="button" id="open-profile-btn" class="icon-btn" title="Editar perfil">
@@ -115,8 +121,6 @@
                     <input type="text" id="message-input" placeholder="Mandar mensagem..." autocomplete="off" maxlength="2000">
                     <button type="submit" class="btn-primary btn-send">Enviar</button>
                 </form>
-
-                <!-- Picker com abas -->
                 <div id="sticker-picker" class="sticker-picker hidden">
                     <div class="picker-tabs">
                         <button type="button" class="picker-tab active" data-picker="stickers">Figurinhas</button>
@@ -177,7 +181,16 @@
                 </div>
             </section>
 
-            <!-- CONFIGURAÇÕES DO SERVIDOR (tela cheia) -->
+            <!-- DESCOBRIR SERVIDORES -->
+            <section id="view-discover" class="view hidden">
+                <div class="discover-wrap">
+                    <h2>Descobrir servidores</h2>
+                    <input type="text" id="discover-search" placeholder="Buscar por nome..." autocomplete="off">
+                    <div id="discover-list" class="discover-list"></div>
+                </div>
+            </section>
+
+            <!-- CONFIGURAÇÕES DO SERVIDOR -->
             <section id="view-server-settings" class="view hidden">
                 <div class="server-settings-wrap">
                     <div class="server-settings-header">
@@ -245,6 +258,9 @@
                 <button type="button" class="btn-secondary modal-cancel">Cancelar</button>
                 <button type="button" class="btn-primary" id="confirm-create-server">Criar</button>
             </div>
+            <hr style="border-color:var(--line);margin:12px 0">
+            <p style="font-size:13px;color:var(--text-1);margin:0 0 8px">Ou entre com ID:</p>
+            <button type="button" class="btn-secondary" id="join-server-id-btn" style="width:100%">Entrar com ID</button>
         </div>
 
         <div class="modal hidden" id="modal-create-channel">
@@ -313,9 +329,6 @@
                     <option value="cursive">Cursiva</option>
                 </select>
             </label>
-            <label>Tags
-                <div id="profile-tags-list" class="tags-list"></div>
-            </label>
             <label>Redes sociais
                 <input type="text" id="profile-social-input" placeholder="instagram.com/seuuser, github.com/seuuser">
             </label>
@@ -346,7 +359,6 @@
             <h2 id="public-profile-name">—</h2>
             <p id="public-profile-status" class="public-status">Online</p>
             <p id="public-profile-bio" class="public-bio">Sem biografia.</p>
-            <div id="public-profile-tags" class="tags-list"></div>
             <div id="public-profile-socials" class="public-socials"></div>
             <div class="modal-actions">
                 <button type="button" class="btn-secondary modal-cancel">Fechar</button>
@@ -373,6 +385,20 @@
             <div class="modal-actions">
                 <button type="button" class="btn-secondary modal-cancel">Cancelar</button>
                 <button type="button" class="btn-primary" id="confirm-sticker-url">Adicionar</button>
+            </div>
+        </div>
+
+        <!-- CONVITE -->
+        <div class="modal hidden" id="modal-invite">
+            <h2>Convite para servidor</h2>
+            <div id="invite-server-info" style="text-align:center;margin:16px 0">
+                <img id="invite-server-icon" class="avatar" style="width:64px;height:64px;border-radius:16px;margin:0 auto 12px;display:block" src="" alt="">
+                <h3 id="invite-server-name" style="margin:0 0 4px">—</h3>
+                <p style="color:var(--text-1);font-size:13px;margin:0">Este servidor poderá ver seu nome, foto e banner.</p>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary modal-cancel">Cancelar</button>
+                <button type="button" class="btn-primary" id="confirm-join-invite">Entrar no servidor</button>
             </div>
         </div>
     </div>
