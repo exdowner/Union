@@ -453,9 +453,10 @@ async function selectServer(id, data) {
         $("current-server-name").textContent = server?.name || "Servidor";
     }
 
-    // Só o dono vê a engrenagem
+    // Só o dono vê a engrenagem (sidebar + header)
     const isOwner = server?.ownerId === currentUser?.uid;
     $("server-settings-btn")?.classList.toggle("hidden", !isOwner);
+    $("header-server-settings-btn")?.classList.toggle("hidden", !isOwner);
 
     renderServerList();
     listenChannels();
@@ -473,6 +474,7 @@ $("home-pill")?.addEventListener("click", () => {
     currentChannelType = null;
     if (exists("current-server-name")) $("current-server-name").textContent = "Bem-vindo";
     $("server-settings-btn")?.classList.add("hidden");
+    $("header-server-settings-btn")?.classList.add("hidden");
     if (exists("channel-groups")) {
         $("channel-groups").innerHTML = '<p class="empty-hint">Crie ou entre em um servidor para ver os canais aqui.</p>';
     }
@@ -537,15 +539,19 @@ $("discover-search")?.addEventListener("input", (e) => {
 // =====================================================
 // SERVER SETTINGS
 // =====================================================
-$("server-settings-btn")?.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!currentServerId) {
-        toast("Selecione um servidor primeiro.");
-        return;
-    }
-    openServerSettings();
-});
+function bindServerSettingsBtn(btn) {
+    btn?.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!currentServerId) {
+            toast("Selecione um servidor primeiro.");
+            return;
+        }
+        openServerSettings();
+    });
+}
+bindServerSettingsBtn($("server-settings-btn"));
+bindServerSettingsBtn($("header-server-settings-btn"));
 
 async function openServerSettings() {
     showView("server-settings");
@@ -703,10 +709,80 @@ async function loadMembers() {
     }
 }
 
-function loadRoles() {
+async function loadRoles() {
     const list = $("roles-list");
-    if (!list) return;
-    list.innerHTML = `<p class="empty-hint">Cargos em breve. Por enquanto só o dono tem permissão total.</p>`;
+    if (!list || !currentServerId) return;
+    list.innerHTML = "<p class='empty-hint'>Carregando cargos...</p>";
+    try {
+        const snap = await safeGet(`serverRoles/${currentServerId}`);
+        const roles = snap.exists() ? Object.entries(snap.val()) : [];
+        list.innerHTML = "";
+
+        // Dono implícito
+        const ownerDiv = document.createElement("div");
+        ownerDiv.className = "role-card";
+        ownerDiv.innerHTML = `
+            <div class="role-card-left">
+                <span class="role-color-dot" style="background:#faa81a"></span>
+                <strong>Dono do servidor</strong>
+                <span class="role-badge">todas as permissões</span>
+            </div>
+        `;
+        list.appendChild(ownerDiv);
+
+        if (!roles.length) {
+            const empty = document.createElement("p");
+            empty.className = "empty-hint";
+            empty.textContent = "Nenhum cargo criado ainda. Clique em Criar cargo.";
+            list.appendChild(empty);
+        }
+
+        roles
+            .sort((a, b) => (b[1].position || 0) - (a[1].position || 0))
+            .forEach(([id, role]) => {
+                const div = document.createElement("div");
+                div.className = "role-card";
+                const perms = role.permissions || {};
+                const tags = [];
+                if (perms.admin) tags.push("ADM");
+                if (perms.manageChannels) tags.push("Canais");
+                if (perms.manageMessages) tags.push("Msgs");
+                if (perms.kick) tags.push("Kick");
+                if (perms.ban) tags.push("Ban");
+                if (perms.manageRoles) tags.push("Cargos");
+                div.innerHTML = `
+                    <div class="role-card-left">
+                        <span class="role-color-dot" style="background:${escapeAttribute(role.color || "#5ee6c4")}"></span>
+                        <strong style="color:${escapeAttribute(role.color || "var(--text-0)")}">${escapeHTML(role.name || "Cargo")}</strong>
+                        ${tags.map(t => `<span class="role-badge">${t}</span>`).join("")}
+                    </div>
+                    <div class="role-card-actions">
+                        <button type="button" class="btn-secondary btn-sm" data-edit-role="${id}">Editar</button>
+                        <button type="button" class="btn-secondary btn-sm danger-btn" data-del-role="${id}">Excluir</button>
+                    </div>
+                `;
+                list.appendChild(div);
+            });
+
+        list.querySelectorAll("[data-edit-role]").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                const id = btn.dataset.editRole;
+                const snap = await safeGet(`serverRoles/${currentServerId}/${id}`);
+                if (!snap.exists()) return;
+                openRoleModal(id, snap.val());
+            });
+        });
+        list.querySelectorAll("[data-del-role]").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                if (!confirm("Excluir este cargo?")) return;
+                await remove(databaseRef(`serverRoles/${currentServerId}/${btn.dataset.delRole}`));
+                toast("Cargo excluído.");
+                loadRoles();
+            });
+        });
+    } catch (e) {
+        list.innerHTML = `<p class='empty-hint'>Erro: ${escapeHTML(e.message)}</p>`;
+    }
 }
 
 function loadBans() {
@@ -715,8 +791,83 @@ function loadBans() {
     list.innerHTML = `<p class="empty-hint">Nenhum banimento.</p>`;
 }
 
+function openRoleModal(editId = null, data = null) {
+    if (exists("role-edit-id")) $("role-edit-id").value = editId || "";
+    if (exists("role-modal-title")) $("role-modal-title").textContent = editId ? "Editar cargo" : "Criar cargo";
+    if (exists("role-name-input")) $("role-name-input").value = data?.name || "";
+    if (exists("role-color-input")) $("role-color-input").value = data?.color || "#5ee6c4";
+    const perms = data?.permissions || {};
+    if (exists("perm-admin")) $("perm-admin").checked = !!perms.admin;
+    if (exists("perm-manage-channels")) $("perm-manage-channels").checked = !!perms.manageChannels;
+    if (exists("perm-manage-messages")) $("perm-manage-messages").checked = !!perms.manageMessages;
+    if (exists("perm-kick")) $("perm-kick").checked = !!perms.kick;
+    if (exists("perm-ban")) $("perm-ban").checked = !!perms.ban;
+    if (exists("perm-manage-roles")) $("perm-manage-roles").checked = !!perms.manageRoles;
+    openModal("modal-role");
+}
+
 $("create-role-btn")?.addEventListener("click", () => {
-    toast("Sistema de cargos completo em breve.");
+    const server = serverCache[currentServerId];
+    if (!server || server.ownerId !== currentUser?.uid) {
+        return toast("Só o dono pode criar cargos.");
+    }
+    openRoleModal();
+});
+
+$("confirm-role")?.addEventListener("click", async () => {
+    if (!currentServerId || !currentUser) return;
+    const server = serverCache[currentServerId];
+    if (!server || server.ownerId !== currentUser.uid) return toast("Sem permissão.");
+
+    const name = ($("role-name-input")?.value || "").trim();
+    if (!name) return toast("Nome obrigatório.");
+
+    const permissions = {
+        admin: !!$("perm-admin")?.checked,
+        manageChannels: !!$("perm-manage-channels")?.checked,
+        manageMessages: !!$("perm-manage-messages")?.checked,
+        kick: !!$("perm-kick")?.checked,
+        ban: !!$("perm-ban")?.checked,
+        manageRoles: !!$("perm-manage-roles")?.checked
+    };
+    // Admin liga tudo
+    if (permissions.admin) {
+        Object.keys(permissions).forEach(k => permissions[k] = true);
+    }
+
+    const payload = {
+        name: name.slice(0, 32),
+        color: $("role-color-input")?.value || "#5ee6c4",
+        permissions,
+        position: Date.now()
+    };
+
+    const editId = ($("role-edit-id")?.value || "").trim();
+    try {
+        if (editId) {
+            await safeUpdate(`serverRoles/${currentServerId}/${editId}`, payload);
+            toast("Cargo atualizado!");
+        } else {
+            await safePush(`serverRoles/${currentServerId}`, payload);
+            toast("Cargo criado!");
+        }
+        closeModals();
+        loadRoles();
+    } catch (e) {
+        toast("Erro: " + e.message);
+    }
+});
+
+// Admin checkbox liga/desliga os outros
+$("perm-admin")?.addEventListener("change", (e) => {
+    const on = e.target.checked;
+    ["perm-manage-channels", "perm-manage-messages", "perm-kick", "perm-ban", "perm-manage-roles"].forEach(id => {
+        const el = $(id);
+        if (el) {
+            el.checked = on;
+            el.disabled = on;
+        }
+    });
 });
 
 // =====================================================
@@ -1382,7 +1533,21 @@ function loadProfileFields() {
 $("open-profile-btn")?.addEventListener("click", () => {
     loadProfileFields();
     openModal("modal-profile");
+    updateFontPreview();
 });
+
+function updateFontPreview() {
+    const sel = $("profile-font-input");
+    const preview = $("font-preview");
+    if (!sel || !preview) return;
+    const font = sel.value || "Inter";
+    preview.style.fontFamily = font;
+    const name = ($("profile-name-input")?.value || userProfile?.displayName || "Seu nick").trim();
+    preview.textContent = name || "Prévia do nick";
+}
+
+$("profile-font-input")?.addEventListener("change", updateFontPreview);
+$("profile-name-input")?.addEventListener("input", updateFontPreview);
 
 $("profile-avatar-input")?.addEventListener("change", (e) => {
     const f = e.target.files?.[0];
