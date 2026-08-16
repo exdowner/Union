@@ -92,6 +92,9 @@
 
         <main class="main-area">
             <header class="main-header">
+                <button type="button" id="toggle-sidebar-btn" class="icon-btn mobile-only" title="Canais" aria-label="Abrir canais">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+                </button>
                 <span id="channel-title"># selecione-um-canal</span>
                 <div class="main-header-actions">
                     <button type="button" id="theme-btn" class="icon-btn" title="Tema">
@@ -408,5 +411,33 @@
     <script type="module" src="firebase-config.js"></script>
     <script type="module" src="auth.js"></script>
     <script type="module" src="app.js"></script>
+
+    <!-- Mobile sidebar toggle -->
+    <script>
+      (function () {
+        const sidebar = document.querySelector('.channel-sidebar');
+        const toggleBtn = document.getElementById('toggle-sidebar-btn');
+        if (!sidebar || !toggleBtn) return;
+
+        toggleBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          sidebar.classList.toggle('open');
+        });
+
+        // Fecha ao clicar no main
+        document.querySelector('.main-area')?.addEventListener('click', () => {
+          if (window.innerWidth <= 768) {
+            sidebar.classList.remove('open');
+          }
+        });
+
+        // Fecha ao selecionar um canal
+        sidebar.addEventListener('click', (e) => {
+          if (e.target.closest('.channel-item') && window.innerWidth <= 768) {
+            sidebar.classList.remove('open');
+          }
+        });
+      })();
+    </script>
 </body>
 </html>
