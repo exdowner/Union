@@ -157,7 +157,20 @@ function svgIcon(type) {
 async function convertImage(file, opts = {}) {
     if (!file) throw new Error("Nenhuma imagem.");
     if (!file.type?.startsWith("image/")) throw new Error("Apenas imagens.");
+    // GIF: preserva animação (canvas mata o GIF)
+    if (file.type === "image/gif") {
+        return fileToDataURL(file);
+    }
     return imageToBase64(file, opts);
+}
+
+function fileToDataURL(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error("Falha ao ler o arquivo."));
+        reader.readAsDataURL(file);
+    });
 }
 
 function databaseRef(path) {
@@ -524,15 +537,32 @@ $("discover-search")?.addEventListener("input", (e) => {
 // =====================================================
 // SERVER SETTINGS
 // =====================================================
-$("server-settings-btn")?.addEventListener("click", () => {
-    if (!currentServerId) return;
+$("server-settings-btn")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!currentServerId) {
+        toast("Selecione um servidor primeiro.");
+        return;
+    }
     openServerSettings();
 });
 
-function openServerSettings() {
+async function openServerSettings() {
     showView("server-settings");
-    const server = serverCache[currentServerId];
-    if (!server) return;
+    let server = serverCache[currentServerId];
+    if (!server) {
+        try {
+            const snap = await safeGet(`servers/${currentServerId}`);
+            if (snap.exists()) {
+                server = { id: currentServerId, ...snap.val() };
+                serverCache[currentServerId] = server;
+            }
+        } catch (_) {}
+    }
+    if (!server) {
+        toast("Não foi possível carregar o servidor.");
+        return;
+    }
     if (exists("server-name-edit")) $("server-name-edit").value = server.name || "";
     if (exists("server-invite-link")) {
         const slug = server.slug || currentServerId;
@@ -548,6 +578,12 @@ function openServerSettings() {
     }
     const isOwner = server.ownerId === currentUser?.uid;
     $("delete-server-btn")?.classList.toggle("hidden", !isOwner);
+    // Desabilita edição se não for dono
+    const canEdit = !!isOwner;
+    ["server-name-edit", "server-icon-edit", "server-banner-edit", "save-server-overview"].forEach(id => {
+        const el = $(id);
+        if (el) el.disabled = !canEdit;
+    });
 }
 
 $("back-from-server-settings")?.addEventListener("click", () => {
@@ -1377,12 +1413,12 @@ $("profile-banner-input")?.addEventListener("change", (e) => {
 });
 
 $("profile-avatar-url-input")?.addEventListener("input", (e) => {
-    const url = e.target.value.trim();
+    const url = normalizeURL(e.target.value.trim()) || e.target.value.trim();
     if (url && exists("profile-avatar-preview")) $("profile-avatar-preview").src = url;
 });
 
 $("profile-banner-url-input")?.addEventListener("input", (e) => {
-    const url = e.target.value.trim();
+    const url = normalizeURL(e.target.value.trim()) || e.target.value.trim();
     if (exists("profile-banner-preview")) {
         $("profile-banner-preview").style.backgroundImage = url ? `url("${escapeAttribute(url)}")` : "";
         $("profile-banner-preview").style.backgroundSize = "cover";
@@ -1407,21 +1443,34 @@ $("confirm-profile")?.addEventListener("click", async () => {
 
     try {
         if (newAvatarFile) {
-            updates.photoURL = await convertImage(newAvatarFile, {
-                maxWidth: 512, maxHeight: 512, quality: 0.82, maxSizeMB: 5
-            });
+            // GIF mantém animação (não passa pelo canvas)
+            if (newAvatarFile.type === "image/gif") {
+                updates.photoURL = await fileToDataURL(newAvatarFile);
+            } else {
+                updates.photoURL = await convertImage(newAvatarFile, {
+                    maxWidth: 512, maxHeight: 512, quality: 0.82, maxSizeMB: 5
+                });
+            }
         } else {
-            const url = ($("profile-avatar-url-input")?.value || "").trim();
+            const raw = ($("profile-avatar-url-input")?.value || "").trim();
+            const url = normalizeURL(raw);
             if (url) updates.photoURL = url;
+            else if (raw === "") updates.photoURL = null;
         }
 
         if (newBannerFile) {
-            updates.bannerURL = await convertImage(newBannerFile, {
-                maxWidth: 1920, maxHeight: 1080, quality: 0.78, maxSizeMB: 8
-            });
+            if (newBannerFile.type === "image/gif") {
+                updates.bannerURL = await fileToDataURL(newBannerFile);
+            } else {
+                updates.bannerURL = await convertImage(newBannerFile, {
+                    maxWidth: 1920, maxHeight: 1080, quality: 0.78, maxSizeMB: 8
+                });
+            }
         } else {
-            const url = ($("profile-banner-url-input")?.value || "").trim();
+            const raw = ($("profile-banner-url-input")?.value || "").trim();
+            const url = normalizeURL(raw);
             if (url) updates.bannerURL = url;
+            else if (raw === "") updates.bannerURL = null;
         }
 
         await safeUpdate(`users/${currentUser.uid}`, updates);
