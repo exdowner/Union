@@ -15,6 +15,15 @@ export function imageToBase64(file, options = {}) {
             return;
         }
 
+        // GIF: não passa pelo canvas (preserva animação)
+        if (file.type === "image/gif") {
+            const gifReader = new FileReader();
+            gifReader.onload = () => resolve(gifReader.result);
+            gifReader.onerror = () => reject(new Error("Não foi possível ler o GIF."));
+            gifReader.readAsDataURL(file);
+            return;
+        }
+
         const maxSizeMB = options.maxSizeMB ?? 5;
         const maxSize = maxSizeMB * 1024 * 1024;
 
