@@ -229,9 +229,11 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); }
 .main-area { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .main-header {
   height: 52px; border-bottom: 1px solid var(--line);
-  display: flex; align-items: center; justify-content: space-between; padding: 0 16px; font-weight: 600;
+  display: flex; align-items: center; gap: 10px; padding: 0 16px; font-weight: 600;
 }
-.main-header-actions { display: flex; gap: 4px; }
+.main-header #channel-title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.main-header-actions { display: flex; gap: 4px; margin-left: auto; }
+.mobile-only { display: none; }
 .view { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
 
 /* CHAT */
@@ -448,6 +450,217 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); }
   animation: fadeUp .25s ease;
 }
 
-@media (max-width: 720px) {
-  .channel-sidebar { position: absolute; left: 72px; z-index: 20; height: 100%; box-shadow: 4px 0 20px rgba(0,0,0,.3); }
+/* ========== MOBILE RESPONSIVE ========== */
+@media (max-width: 768px) {
+  .app {
+    position: relative;
+  }
+
+  .server-rail {
+    width: 60px;
+    min-width: 60px;
+    padding: 10px 0;
+    gap: 8px;
+    z-index: 30;
+  }
+
+  .server-pill {
+    width: 42px;
+    height: 42px;
+    border-radius: 14px;
+    font-size: 13px;
+  }
+
+  /* Sidebar off-canvas */
+  .channel-sidebar {
+    position: fixed;
+    top: 0;
+    left: 60px;
+    bottom: 0;
+    width: min(280px, calc(100vw - 60px));
+    max-width: 280px;
+    height: 100%;
+    z-index: 25;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.45);
+  }
+
+  .channel-sidebar.open {
+    transform: translateX(0);
+  }
+
+  .main-area {
+    flex: 1;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .main-header {
+    height: 48px;
+    padding: 0 12px;
+    font-size: 14px;
+    gap: 8px;
+  }
+
+  .mobile-only {
+    display: inline-flex;
+  }
+
+  #channel-title {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 55vw;
+  }
+
+  .messages {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .message {
+    gap: 10px;
+  }
+
+  .msg-image img {
+    max-width: 100%;
+    max-height: 240px;
+  }
+
+  .msg-sticker img {
+    max-width: 120px;
+    max-height: 120px;
+  }
+
+  .msg-audio {
+    max-width: 100%;
+  }
+
+  .msg-audio audio {
+    width: 180px;
+  }
+
+  .message-form {
+    padding: 10px 12px;
+    gap: 4px;
+  }
+
+  .message-form .icon-btn {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+  }
+
+  .btn-send {
+    padding: 10px 14px;
+    font-size: 13px;
+  }
+
+  .sticker-picker {
+    left: 8px;
+    right: 8px;
+    max-width: none;
+    width: auto;
+    bottom: 64px;
+  }
+
+  .sticker-grid,
+  .emoji-grid {
+    grid-template-columns: repeat(5, 1fr);
+    max-height: 180px;
+  }
+
+  .user-card {
+    height: 54px;
+    padding: 0 8px;
+  }
+
+  .voice-stage {
+    padding: 24px 16px;
+  }
+
+  .video-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .forum-toolbar,
+  .forum-posts,
+  .forum-thread {
+    padding: 12px;
+  }
+
+  .discover-wrap {
+    padding: 16px;
+  }
+
+  .server-settings-wrap {
+    padding: 16px;
+  }
+
+  .server-settings-tabs {
+    flex-wrap: wrap;
+  }
+
+  .settings-tab {
+    font-size: 12px;
+    padding: 8px 6px;
+  }
+
+  .modal {
+    width: calc(100vw - 24px);
+    max-width: 420px;
+    max-height: 90vh;
+    padding: 20px 16px;
+    margin: 12px;
+  }
+
+  .modal-actions {
+    flex-wrap: wrap;
+  }
+
+  .profile-edit-preview {
+    margin: -20px -16px 36px;
+  }
+
+  .public-profile-banner {
+    margin: 0 -16px;
+  }
+
+  .auth-card {
+    width: calc(100% - 32px);
+    max-width: 380px;
+    padding: 24px 20px;
+  }
+
+  .toast {
+    left: 12px;
+    right: 12px;
+    transform: none;
+    width: auto;
+    text-align: center;
+  }
 }
+
+@media (max-width: 400px) {
+  .server-rail {
+    width: 54px;
+    min-width: 54px;
+  }
+
+  .server-pill {
+    width: 38px;
+    height: 38px;
+  }
+
+  .channel-sidebar {
+    left: 54px;
+    width: calc(100vw - 54px);
+    max-width: none;
+  }
+
+  .message-form .btn-send {
+    display: none;
+  }
+}
+
