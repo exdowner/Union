@@ -282,7 +282,7 @@ function renderUserCard() {
     if (!currentUser) return;
     if (exists("user-card-avatar")) $("user-card-avatar").src = getCurrentPhoto();
     if (exists("user-card-name")) {
-        $("user-card-name").textContent = getCurrentDisplayName(true);
+        $("user-card-name").innerHTML = escapeHTML(getCurrentDisplayName(false)) + clanTagHTML(userProfile);
         $("user-card-name").style.fontFamily = userProfile?.nameFont || "Inter";
         $("user-card-name").style.color = getCurrentColor();
         $("user-card-name").dataset.userId = currentUser.uid;
@@ -456,10 +456,9 @@ async function selectServer(id, data) {
         $("current-server-name").textContent = server?.name || "Servidor";
     }
 
-    // Só o dono vê a engrenagem (sidebar + header)
-    const isOwner = server?.ownerId === currentUser?.uid;
-    $("server-settings-btn")?.classList.toggle("hidden", !isOwner);
-    $("header-server-settings-btn")?.classList.toggle("hidden", !isOwner);
+    // Todos veem a engrenagem; conteúdo muda por permissão
+    $("server-settings-btn")?.classList.remove("hidden");
+    $("header-server-settings-btn")?.classList.remove("hidden");
 
     renderServerList();
     listenChannels();
@@ -602,20 +601,44 @@ async function openServerSettings() {
             : "linear-gradient(135deg,var(--accent-dim),var(--bg-3))";
     }
     const isOwner = server.ownerId === currentUser?.uid;
+    // canEdit async filled below
+    applyServerSettingsPermissions(server, isOwner);
+}
+
+async function applyServerSettingsPermissions(server, isOwner) {
+    const isAdmin = isOwner || await userHasAdminPower(currentServerId, currentUser?.uid);
     $("delete-server-btn")?.classList.toggle("hidden", !isOwner);
-    const canEdit = !!isOwner;
+    const tabs = document.querySelectorAll(".settings-tab");
+    tabs.forEach(t => {
+        const id = t.dataset.stab;
+        if (!isAdmin && id !== "overview") t.classList.add("hidden");
+        else t.classList.remove("hidden");
+    });
+    // member overview: show info only
+    ["roles", "emojis", "servertags", "members", "bans"].forEach(p => {
+        if (!isAdmin) $(`stab-${p}`)?.classList.add("hidden");
+    });
     [
         "server-name-edit", "server-desc-edit", "server-icon-edit", "server-banner-edit",
         "server-icon-url", "server-banner-url", "server-tags-edit", "server-slug-edit",
-        "server-verification-edit", "server-nsfw-edit", "save-server-overview", "create-role-btn"
+        "server-verification-edit", "server-nsfw-edit", "save-server-overview", "create-role-btn",
+        "server-tag-text", "server-tag-file", "server-tag-url", "save-server-tag-btn",
+        "server-emoji-file", "server-emoji-name", "server-emoji-url-btn"
     ].forEach(id => {
         const el = $(id);
-        if (el) el.disabled = !canEdit;
+        if (el) el.disabled = !isAdmin;
+    });
+    // hide save/delete for members
+    $("save-server-overview")?.classList.toggle("hidden", !isAdmin);
+    document.querySelectorAll(".upload-label").forEach(l => {
+        if (l.closest("#stab-overview") || l.closest("#stab-emojis") || l.closest("#stab-servertags")) {
+            l.style.display = isAdmin ? "" : "none";
+        }
     });
     if (exists("server-settings-hint")) {
-        $("server-settings-hint").textContent = canEdit
+        $("server-settings-hint").textContent = isOwner
             ? "Você é o dono — pode editar tudo."
-            : "Somente o dono pode editar este servidor.";
+            : (isAdmin ? "Você tem cargo de administrador." : "Visualização do servidor (somente leitura).");
     }
 }
 
@@ -665,7 +688,10 @@ $("save-server-overview")?.addEventListener("click", async () => {
     const bannerUrl = normalizeURL(($("server-banner-url")?.value || "").trim());
 
     try {
-        if (iconFile) {
+        if (window.__pendingServerIcon) {
+            updates.iconURL = window.__pendingServerIcon;
+            window.__pendingServerIcon = null;
+        } else if (iconFile) {
             updates.iconURL = iconFile.type === "image/gif"
                 ? await fileToDataURL(iconFile)
                 : await convertImage(iconFile, { maxWidth: 512, maxHeight: 512, quality: 0.82 });
@@ -715,7 +741,17 @@ $("server-banner-url")?.addEventListener("input", (e) => {
 
 $("server-icon-edit")?.addEventListener("change", (e) => {
     const f = e.target.files?.[0];
-    if (f && exists("server-icon-preview")) $("server-icon-preview").src = URL.createObjectURL(f);
+    if (!f) return;
+    if (typeof openImageCropper === "function") {
+        openImageCropper(f, async (dataUrl) => {
+            if (!dataUrl) return;
+            if (exists("server-icon-preview")) $("server-icon-preview").src = dataUrl;
+            window.__pendingServerIcon = dataUrl;
+            toast("Ícone ajustado. Clique em Salvar.");
+        });
+    } else if (exists("server-icon-preview")) {
+        $("server-icon-preview").src = URL.createObjectURL(f);
+    }
 });
 
 $("server-banner-edit")?.addEventListener("change", (e) => {
@@ -776,12 +812,13 @@ document.querySelectorAll(".settings-tab").forEach(tab => {
         document.querySelectorAll(".settings-tab").forEach(t => t.classList.remove("active"));
         tab.classList.add("active");
         const id = tab.dataset.stab;
-        ["overview", "roles", "emojis", "members", "bans"].forEach(p => {
+        ["overview", "roles", "emojis", "servertags", "members", "bans"].forEach(p => {
             $(`stab-${p}`)?.classList.toggle("hidden", p !== id);
         });
         if (id === "members") loadMembers();
         if (id === "roles") loadRoles();
         if (id === "emojis") loadServerEmojis();
+        if (id === "servertags") loadServerTagEditor();
         if (id === "bans") loadBans();
     });
 });
@@ -1521,15 +1558,49 @@ function renderStickerGrid(data) {
 
 function renderEmojiGrid() {
     const grid = $("emoji-grid");
-    if (!grid || grid.children.length) return;
-    EMOJIS.forEach(em => {
+    if (!grid) return;
+    if (!grid.children.length && typeof EMOJIS !== "undefined") {
+        EMOJIS.forEach(em => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.textContent = em;
+            btn.addEventListener("click", () => {
+                const input = $("message-input");
+                if (input) {
+                    input.value += em;
+                    input.focus();
+                }
+                $("sticker-picker")?.classList.add("hidden");
+            });
+            grid.appendChild(btn);
+        });
+    }
+    renderServerEmojiPicker();
+}
+
+async function renderServerEmojiPicker() {
+    const grid = $("server-emoji-picker-grid");
+    if (!grid) return;
+    grid.innerHTML = "";
+    if (!currentServerId) {
+        grid.innerHTML = "<p class='empty-hint' style='grid-column:1/-1'>Entre em um servidor</p>";
+        return;
+    }
+    await refreshServerEmojiCache();
+    const entries = Object.values(serverEmojiCache || {});
+    if (!entries.length) {
+        grid.innerHTML = "<p class='empty-hint' style='grid-column:1/-1'>Nenhum emoji do servidor</p>";
+        return;
+    }
+    entries.forEach(em => {
         const btn = document.createElement("button");
         btn.type = "button";
-        btn.textContent = em;
+        btn.title = `:${em.name}:`;
+        btn.innerHTML = `<img src="${escapeAttribute(em.url)}" alt=":${escapeAttribute(em.name)}:" style="width:28px;height:28px;object-fit:contain">`;
         btn.addEventListener("click", () => {
             const input = $("message-input");
             if (input) {
-                input.value += em;
+                input.value += `:${em.name}:`;
                 input.focus();
             }
             $("sticker-picker")?.classList.add("hidden");
@@ -1569,6 +1640,7 @@ document.querySelectorAll(".picker-tab").forEach(tab => {
         const panel = tab.dataset.picker;
         $("picker-stickers")?.classList.toggle("hidden", panel !== "stickers");
         $("picker-emojis")?.classList.toggle("hidden", panel !== "emojis");
+        if (panel === "emojis") renderServerEmojiPicker();
     });
 });
 
@@ -1764,7 +1836,11 @@ function setupVoiceView(channel) {
     $("leave-voice-btn")?.classList.add("hidden");
     $("toggle-mic-btn")?.classList.add("hidden");
     $("toggle-cam-btn")?.classList.add("hidden");
+    $("share-screen-btn")?.classList.add("hidden");
     if (exists("video-grid")) $("video-grid").innerHTML = "";
+    if (exists("voice-participants")) {
+        $("voice-participants").innerHTML = "<p class='empty-hint'>Entre na call para ver os participantes</p>";
+    }
 }
 
 $("join-voice-btn")?.addEventListener("click", async () => {
@@ -1906,10 +1982,13 @@ $("confirm-profile")?.addEventListener("click", async () => {
 
     const clanServerId = ($("profile-clan-tag")?.value || "").trim();
     let clanTag = "";
+    let clanTagData = null;
     if (clanServerId) {
         const s = serverCache[clanServerId];
-        const tagBase = (s?.slug || s?.name || "SRV").toString().slice(0, 8).toUpperCase();
-        clanTag = "✅" + tagBase;
+        if (s?.serverTag?.text) {
+            clanTagData = { text: s.serverTag.text, iconURL: s.serverTag.iconURL || null, serverId: clanServerId };
+            clanTag = s.serverTag.text;
+        }
     }
     const bgFromFile = $("appearance-bg-url")?.dataset?.local || "";
     const bgUrl = bgFromFile || normalizeURL(($("appearance-bg-url")?.value || "").trim()) || "";
@@ -1922,6 +2001,7 @@ $("confirm-profile")?.addEventListener("click", async () => {
         customStatus: ($("profile-status-input")?.value || "").trim().slice(0, 32),
         presence: $("profile-presence-input")?.value || "online",
         clanTag,
+        clanTagData,
         clanTagServerId: clanServerId || null,
         privacy: {
             profileVisibility: $("privacy-profile-visibility")?.value || "everyone",
@@ -2308,9 +2388,34 @@ $("dm-form")?.addEventListener("submit", async (e) => {
 
 $("dm-block-btn")?.addEventListener("click", async () => {
     if (!currentDmUid || !currentUser) return;
-    if (!confirm("Bloquear este usuário?")) return;
-    await safeSet(`blocks/${currentUser.uid}/${currentDmUid}`, true);
-    toast("Usuário bloqueado.");
+    if (!confirm("Bloquear? Isso remove a amizade e a conversa.")) return;
+    try {
+        const id = dmIdFor(currentUser.uid, currentDmUid);
+        await safeSet(`blocks/${currentUser.uid}/${currentDmUid}`, true);
+        try { await remove(databaseRef(`friends/${currentUser.uid}/${currentDmUid}`)); } catch {}
+        try { await remove(databaseRef(`friends/${currentDmUid}/${currentUser.uid}`)); } catch {}
+        try { await remove(databaseRef(`dms/${id}`)); } catch {}
+        toast("Usuário bloqueado. Conversa e amizade removidas.");
+        stopDmListener();
+        currentDmUid = null;
+        showView("friends");
+        loadFriendsList();
+    } catch (e) {
+        toast("Erro: " + e.message);
+    }
+});
+
+$("dm-remove-friend-btn")?.addEventListener("click", async () => {
+    if (!currentDmUid || !currentUser) return;
+    if (!confirm("Remover amizade?")) return;
+    try {
+        await remove(databaseRef(`friends/${currentUser.uid}/${currentDmUid}`));
+        await remove(databaseRef(`friends/${currentDmUid}/${currentUser.uid}`));
+        toast("Amizade removida.");
+        loadFriendsList();
+    } catch (e) {
+        toast("Erro: " + e.message);
+    }
 });
 
 $("dm-report-btn")?.addEventListener("click", async () => {
@@ -2388,12 +2493,16 @@ async function populateClanTagSelect() {
         const snap = await safeGet(`userServers/${currentUser.uid}`);
         if (!snap.exists()) return;
         for (const sid of Object.keys(snap.val())) {
-            const s = serverCache[sid] || (await safeGet(`servers/${sid}`)).val();
-            if (!s || s.deleted) continue;
-            const tag = (s.slug || s.name || "SRV").toString().slice(0, 8).toUpperCase();
+            let s = serverCache[sid];
+            if (!s) {
+                const ss = await safeGet(`servers/${sid}`);
+                s = ss.exists() ? ss.val() : null;
+            }
+            if (!s || s.deleted || !s.serverTag?.text) continue;
+            const t = s.serverTag;
             const opt = document.createElement("option");
             opt.value = sid;
-            opt.textContent = `✅${tag} — ${s.name || sid}`;
+            opt.textContent = `${t.text} — ${s.name || sid}`;
             if (sid === current) opt.selected = true;
             sel.appendChild(opt);
         }
@@ -2492,6 +2601,121 @@ $("share-screen-btn")?.addEventListener("click", async () => {
     } catch (e) {
         toast("Não foi possível compartilhar: " + (e.message || "cancelado"));
     }
+});
+
+
+
+// =====================================================
+// TAG DE SERVIDOR + CROPPER
+// =====================================================
+function loadServerTagEditor() {
+    if (!currentServerId) return;
+    const server = serverCache[currentServerId] || {};
+    const tag = server.serverTag || {};
+    if (exists("server-tag-text")) $("server-tag-text").value = tag.text || "";
+    if (exists("server-tag-url")) $("server-tag-url").value = tag.iconURL && String(tag.iconURL).startsWith("http") ? tag.iconURL : "";
+    renderServerTagPreview(tag);
+}
+
+function renderServerTagPreview(tag) {
+    const box = $("server-tag-preview");
+    if (!box) return;
+    if (!tag || (!tag.text && !tag.iconURL)) {
+        box.innerHTML = "<span class='empty-hint'>Prévia da tag</span>";
+        return;
+    }
+    box.innerHTML = `<span class="clan-tag-badge">${tag.iconURL ? `<img src="${escapeAttribute(tag.iconURL)}" alt="">` : ""}${escapeHTML(tag.text || "")}</span>`;
+}
+
+$("save-server-tag-btn")?.addEventListener("click", async () => {
+    if (!currentServerId || !currentUser) return;
+    const can = await userHasAdminPower(currentServerId, currentUser.uid);
+    if (!can) return toast("Sem permissão.");
+    const textVal = ($("server-tag-text")?.value || "").trim().slice(0, 8).toUpperCase();
+    if (!textVal) return toast("Texto da tag obrigatório.");
+    let iconURL = normalizeURL(($("server-tag-url")?.value || "").trim());
+    const file = $("server-tag-file")?.files?.[0];
+    try {
+        if (file) {
+            iconURL = file.type === "image/gif" ? await fileToDataURL(file) : await convertImage(file, { maxWidth: 64, maxHeight: 64, quality: 0.9 });
+        }
+        const serverTag = { text: textVal, iconURL: iconURL || null };
+        await safeUpdate(`servers/${currentServerId}`, { serverTag });
+        if (serverCache[currentServerId]) serverCache[currentServerId].serverTag = serverTag;
+        renderServerTagPreview(serverTag);
+        toast("Tag do servidor salva!");
+    } catch (e) {
+        toast("Erro: " + e.message);
+    }
+});
+
+function clanTagHTML(userOrProfile) {
+    const t = userOrProfile?.clanTagData || null;
+    if (!t && userOrProfile?.clanTag) {
+        return `<span class="clan-tag-badge">${escapeHTML(userOrProfile.clanTag)}</span>`;
+    }
+    if (!t || !t.text) return "";
+    return `<span class="clan-tag-badge">${t.iconURL ? `<img src="${escapeAttribute(t.iconURL)}" alt="">` : ""}${escapeHTML(t.text)}</span>`;
+}
+
+let cropCallback = null;
+let cropScale = 1;
+let cropPos = { x: 0, y: 0 };
+
+function openImageCropper(file, onDone) {
+    const url = URL.createObjectURL(file);
+    const img = $("crop-image");
+    if (!img) return onDone && onDone(null);
+    img.src = url;
+    cropScale = 1;
+    cropPos = { x: 0, y: 0 };
+    if (exists("crop-zoom")) $("crop-zoom").value = "1";
+    cropCallback = onDone;
+    openModal("modal-image-crop");
+    const apply = () => {
+        img.style.transform = `translate(calc(-50% + ${cropPos.x}px), calc(-50% + ${cropPos.y}px)) scale(${cropScale})`;
+    };
+    img.onload = apply;
+    const zoom = $("crop-zoom");
+    if (zoom) zoom.oninput = (e) => { cropScale = parseFloat(e.target.value) || 1; apply(); };
+    let dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
+    img.onmousedown = (e) => { e.preventDefault(); dragging = true; sx = e.clientX; sy = e.clientY; ox = cropPos.x; oy = cropPos.y; };
+    window.addEventListener("mousemove", (e) => {
+        if (!dragging) return;
+        cropPos.x = ox + (e.clientX - sx);
+        cropPos.y = oy + (e.clientY - sy);
+        apply();
+    });
+    window.addEventListener("mouseup", () => { dragging = false; });
+}
+
+$("crop-cancel")?.addEventListener("click", () => { cropCallback = null; closeModals(); });
+
+$("crop-confirm")?.addEventListener("click", async () => {
+    const img = $("crop-image");
+    const frame = $("crop-frame");
+    if (!img || !frame || !cropCallback) return closeModals();
+    try {
+        const size = 512;
+        const canvas = document.createElement("canvas");
+        canvas.width = size; canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        const rect = frame.getBoundingClientRect();
+        const iw = img.naturalWidth, ih = img.naturalHeight;
+        const base = Math.max(size / iw, size / ih) * cropScale;
+        const dw = iw * base, dh = ih * base;
+        const dx = (size - dw) / 2 + cropPos.x * (size / Math.max(rect.width, 1));
+        const dy = (size - dh) / 2 + cropPos.y * (size / Math.max(rect.height, 1));
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, size, size);
+        ctx.drawImage(img, dx, dy, dw, dh);
+        const dataUrl = canvas.toDataURL("image/png", 0.92);
+        await cropCallback(dataUrl);
+    } catch (e) {
+        toast("Erro no recorte: " + e.message);
+    }
+    cropCallback = null;
+    closeModals();
 });
 
 

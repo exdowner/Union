@@ -142,12 +142,19 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); }
 @keyframes fadeUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:none} }
 .auth-brand { text-align: center; margin-bottom: 20px; }
 .auth-logo {
-  width: 52px; height: 52px; margin: 0 auto 10px;
-  background: var(--accent);
-  color: #08110e;
-  border-radius: 14px;
+  width: 72px; height: 72px; margin: 0 auto 12px;
+  background: linear-gradient(145deg, #1a1a1a, #0a0a0a);
+  border: 1px solid #333;
+  border-radius: 18px;
   display: flex; align-items: center; justify-content: center;
-  font-family: var(--font-display); font-weight: 700; font-size: 20px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0,0,0,.5);
+}
+.auth-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: grayscale(1) contrast(1.15) brightness(1.05);
 }
 .auth-brand h1 { font-family: var(--font-display); margin: 0 0 4px; letter-spacing: -.5px; }
 .auth-brand p { color: var(--text-1); font-size: 13px; margin: 0; }
@@ -173,7 +180,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); }
   font-family: var(--font-display); font-weight: 700; font-size: 15px;
   overflow: hidden; transition: border-radius var(--transition), background var(--transition), transform var(--transition);
 }
-.server-pill img { width: 100%; height: 100%; object-fit: cover; }
+.server-pill img { width: 100%; height: 100%; object-fit: cover; object-position: center; }
 .server-pill:hover { border-radius: 14px; transform: scale(1.05); }
 .server-pill.active { border-radius: 14px; background: var(--accent-dim); }
 .server-pill-home.active { background: var(--accent); color: #08110e; }
@@ -664,9 +671,12 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); }
   }
 
   .message-form .btn-send {
-    display: none;
+    display: inline-flex !important;
+    padding: 10px 12px;
+    font-size: 12px;
   }
 }
+
 
 
 /* Font preview no perfil */
@@ -917,4 +927,136 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); }
 }
 .server-pill-friends:hover {
   color: var(--accent);
+}
+
+/* Clan tag triangle badge */
+.clan-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  vertical-align: middle;
+  clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+  background: linear-gradient(180deg, #2a2a2a, #111);
+  padding: 6px 10px 4px;
+  min-width: 36px;
+  justify-content: center;
+}
+.clan-tag-inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  clip-path: none;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  color: #eee;
+  transform: translateY(2px);
+}
+.clan-tag-inner img {
+  width: 12px;
+  height: 12px;
+  object-fit: cover;
+  border-radius: 2px;
+}
+.clan-tag-preview {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg-2);
+  border-radius: 10px;
+  border: 1px solid var(--line);
+}
+.clan-tag-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #1a1a1a;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #f0f0f0;
+  margin-left: 6px;
+}
+.clan-tag-badge img {
+  width: 14px; height: 14px; object-fit: cover; border-radius: 2px;
+}
+
+/* Crop modal */
+.crop-wrap {
+  width: 100%;
+  max-width: 320px;
+  margin: 0 auto;
+  background: #000;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+.crop-frame {
+  width: 280px;
+  height: 280px;
+  margin: 16px auto;
+  overflow: hidden;
+  border-radius: 16px;
+  position: relative;
+  background: #111;
+  border: 2px dashed var(--line);
+}
+.crop-frame img {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  min-width: 100%;
+  min-height: 100%;
+  object-fit: cover;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+/* Server icon full square */
+.server-icon-preview {
+  object-fit: cover !important;
+  object-position: center;
+}
+.server-pill {
+  overflow: hidden;
+}
+
+/* Message form mobile hitbox */
+.message-form {
+  gap: 4px;
+  min-height: 56px;
+}
+.message-form .btn-send {
+  min-width: 64px;
+  min-height: 40px;
+  touch-action: manipulation;
+}
+.message-form .icon-btn {
+  min-width: 40px;
+  min-height: 40px;
+  flex-shrink: 0;
+  touch-action: manipulation;
+}
+.message-form input[type="text"] {
+  min-height: 40px;
+  font-size: 16px; /* evita zoom iOS */
+}
+
+/* Member overview (non-admin) */
+.member-server-card {
+  text-align: center;
+  padding: 20px 12px;
+}
+.member-server-card .server-banner-preview {
+  margin-bottom: 0;
+}
+.member-server-card h3 {
+  margin: 12px 0 4px;
+  font-family: var(--font-display);
 }
