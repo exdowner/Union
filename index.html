@@ -209,6 +209,7 @@
                     <div class="server-settings-tabs">
                         <button type="button" class="settings-tab active" data-stab="overview">Visão geral</button>
                         <button type="button" class="settings-tab" data-stab="roles">Cargos</button>
+                        <button type="button" class="settings-tab" data-stab="emojis">Emojis</button>
                         <button type="button" class="settings-tab" data-stab="members">Membros</button>
                         <button type="button" class="settings-tab" data-stab="bans">Banimentos</button>
                     </div>
@@ -220,23 +221,63 @@
                         <label>Nome do servidor
                             <input type="text" id="server-name-edit" maxlength="40">
                         </label>
-                        <label class="upload-label">
-                            <span class="upload-btn">Trocar ícone</span>
-                            <input type="file" id="server-icon-edit" accept="image/*" class="hidden">
+                        <label>Descrição
+                            <textarea id="server-desc-edit" maxlength="300" rows="3" placeholder="Sobre o servidor..."></textarea>
                         </label>
                         <label class="upload-label">
-                            <span class="upload-btn">Trocar banner</span>
+                            <span class="upload-btn">Trocar ícone (arquivo)</span>
+                            <input type="file" id="server-icon-edit" accept="image/*" class="hidden">
+                        </label>
+                        <label>URL do ícone (GIF/PNG/JPG)
+                            <input type="url" id="server-icon-url" placeholder="https://...">
+                        </label>
+                        <label class="upload-label">
+                            <span class="upload-btn">Trocar banner (arquivo)</span>
                             <input type="file" id="server-banner-edit" accept="image/*" class="hidden">
+                        </label>
+                        <label>URL do banner (GIF/PNG/JPG)
+                            <input type="url" id="server-banner-url" placeholder="https://...">
+                        </label>
+                        <label>Tags do servidor (separadas por vírgula)
+                            <input type="text" id="server-tags-edit" placeholder="gaming, brasil, anime, dev">
+                        </label>
+                        <div id="server-tags-preview" class="tags-list" style="margin-top:4px"></div>
+                        <label>Slug do convite (personalizado)
+                            <input type="text" id="server-slug-edit" maxlength="40" placeholder="meu-servidor">
                         </label>
                         <label>Link de convite
                             <input type="text" id="server-invite-link" readonly>
                         </label>
+                        <label>Nível de verificação
+                            <select id="server-verification-edit">
+                                <option value="none">Nenhuma</option>
+                                <option value="low">Baixa (email verificado)</option>
+                                <option value="medium">Média (conta com 5+ min)</option>
+                                <option value="high">Alta</option>
+                            </select>
+                        </label>
+                        <label class="perm-check"><input type="checkbox" id="server-nsfw-edit"> Servidor NSFW / 18+</label>
                         <button type="button" class="btn-primary" id="save-server-overview">Salvar</button>
                         <button type="button" class="btn-secondary danger-btn hidden" id="delete-server-btn">Excluir servidor (somente dono)</button>
+                        <p id="server-settings-hint" class="empty-hint" style="margin-top:8px"></p>
                     </div>
                     <div id="stab-roles" class="settings-panel hidden">
                         <button type="button" class="btn-primary" id="create-role-btn">Criar cargo</button>
                         <div id="roles-list"></div>
+                    </div>
+                    <div id="stab-emojis" class="settings-panel hidden">
+                        <p class="empty-hint">Emojis do servidor (tamanho de emoji, animados ou estáticos). Use :nome: no chat.</p>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+                            <label class="upload-label" style="margin:0">
+                                <span class="upload-btn">Upload emoji</span>
+                                <input type="file" id="server-emoji-file" accept="image/*" class="hidden">
+                            </label>
+                            <button type="button" class="btn-secondary" id="server-emoji-url-btn">Por URL</button>
+                        </div>
+                        <label>Nome do emoji (sem espaços)
+                            <input type="text" id="server-emoji-name" maxlength="32" placeholder="pepe, catjam, risada">
+                        </label>
+                        <div id="server-emojis-list" class="server-emojis-grid"></div>
                     </div>
                     <div id="stab-members" class="settings-panel hidden">
                         <div id="members-list"></div>
@@ -429,17 +470,32 @@
             </div>
         </div>
 
-        <!-- CONVITE -->
-        <div class="modal hidden" id="modal-invite">
-            <h2>Convite para servidor</h2>
-            <div id="invite-server-info" style="text-align:center;margin:16px 0">
-                <img id="invite-server-icon" class="avatar" style="width:64px;height:64px;border-radius:16px;margin:0 auto 12px;display:block" src="" alt="">
-                <h3 id="invite-server-name" style="margin:0 0 4px">—</h3>
-                <p style="color:var(--text-1);font-size:13px;margin:0">Este servidor poderá ver seu nome, foto e banner.</p>
-            </div>
+        <div class="modal hidden" id="modal-server-emoji-url">
+            <h2>Emoji do servidor por URL</h2>
+            <label>Nome
+                <input type="text" id="server-emoji-url-name" maxlength="32" placeholder="catjam">
+            </label>
+            <label>URL da imagem (GIF/PNG)
+                <input type="url" id="server-emoji-url-input" placeholder="https://...">
+            </label>
             <div class="modal-actions">
                 <button type="button" class="btn-secondary modal-cancel">Cancelar</button>
-                <button type="button" class="btn-primary" id="confirm-join-invite">Entrar no servidor</button>
+                <button type="button" class="btn-primary" id="confirm-server-emoji-url">Adicionar</button>
+            </div>
+        </div>
+
+        <!-- CONVITE -->
+        <div class="modal modal-invite-discord hidden" id="modal-invite">
+            <div class="invite-card">
+                <p class="invite-eyebrow">Você foi convidado para entrar em</p>
+                <img id="invite-server-icon" class="invite-server-icon" src="" alt="">
+                <h2 id="invite-server-name">—</h2>
+                <p id="invite-server-desc" class="invite-desc">Este servidor poderá ver seu nome, foto e banner.</p>
+                <div id="invite-server-tags" class="tags-list" style="justify-content:center;margin:8px 0 16px"></div>
+                <div class="invite-actions">
+                    <button type="button" class="btn-secondary" id="decline-invite-btn">Recusar</button>
+                    <button type="button" class="btn-primary" id="confirm-join-invite">Aceitar convite</button>
+                </div>
             </div>
         </div>
 

@@ -740,3 +740,109 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); }
   width: auto !important;
   accent-color: var(--accent);
 }
+
+/* Invite Discord-like */
+.modal-invite-discord {
+  width: 400px;
+  max-width: calc(100vw - 24px);
+  padding: 0;
+  overflow: hidden;
+  background: var(--bg-1);
+}
+.invite-card {
+  padding: 28px 24px 24px;
+  text-align: center;
+}
+.invite-eyebrow {
+  margin: 0 0 16px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-2);
+  font-weight: 700;
+}
+.invite-server-icon {
+  width: 80px;
+  height: 80px;
+  border-radius: 20px;
+  object-fit: cover;
+  display: block;
+  margin: 0 auto 12px;
+  background: var(--bg-3);
+  border: 4px solid var(--bg-2);
+}
+.invite-card h2 {
+  margin: 0 0 8px;
+  font-family: var(--font-display);
+  font-size: 22px;
+}
+.invite-desc {
+  margin: 0;
+  color: var(--text-1);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.invite-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+.invite-actions .btn-secondary,
+.invite-actions .btn-primary {
+  flex: 1;
+  justify-content: center;
+}
+
+/* Server emojis */
+.server-emojis-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+.server-emoji-item {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px;
+  text-align: center;
+  position: relative;
+}
+.server-emoji-item img {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto 4px;
+}
+.server-emoji-item span {
+  font-size: 11px;
+  color: var(--text-1);
+  word-break: break-all;
+}
+.server-emoji-item .emoji-del {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--bg-3);
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 20px;
+  padding: 0;
+}
+.msg-emoji {
+  width: 28px;
+  height: 28px;
+  vertical-align: middle;
+  object-fit: contain;
+}
+.picker-server-emojis {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+}
