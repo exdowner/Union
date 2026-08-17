@@ -846,3 +846,75 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); }
   max-height: 180px;
   overflow-y: auto;
 }
+
+/* Profile tabs */
+.profile-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-2);
+  padding: 4px;
+  border-radius: 10px;
+  margin: 12px 0 8px;
+}
+.profile-tab {
+  flex: 1;
+  padding: 8px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+.profile-tab.active {
+  background: var(--bg-3);
+  color: var(--text-0);
+}
+.profile-tab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+/* Voice Discord-like */
+.voice-stage {
+  justify-content: flex-start;
+}
+.voice-controls-bar {
+  position: sticky;
+  bottom: 0;
+  background: var(--bg-1);
+  border-top: 1px solid var(--line);
+  padding: 12px;
+  width: 100%;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.voice-participants {
+  width: 100%;
+  max-width: 900px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 16px;
+  padding: 16px;
+}
+.voice-participant {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px 10px;
+}
+.voice-participant img,
+.voice-participant .avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.video-grid {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+}
+.server-pill-friends:hover {
+  color: var(--accent);
+}

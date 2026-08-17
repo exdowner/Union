@@ -79,8 +79,10 @@ function safeName(v, fb = "Usuário") {
     return String(v || "").trim() || fb;
 }
 
-function getCurrentDisplayName() {
-    return safeName(userProfile?.displayName);
+function getCurrentDisplayName(withClan = false) {
+    const name = safeName(userProfile?.displayName);
+    if (withClan && userProfile?.clanTag) return `${userProfile.clanTag} ${name}`;
+    return name;
 }
 
 function getCurrentPhoto() {
@@ -261,6 +263,7 @@ window.addEventListener("devcord:signed-in", async (e) => {
         const snap = await safeGet(`users/${currentUser.uid}`);
         userProfile = snap.exists() ? snap.val() : {};
         renderUserCard();
+        try { applyAppearance(userProfile?.appearance); } catch {}
         listenServers();
         listenStickers();
         setPresence(getCurrentPresence());
@@ -279,7 +282,7 @@ function renderUserCard() {
     if (!currentUser) return;
     if (exists("user-card-avatar")) $("user-card-avatar").src = getCurrentPhoto();
     if (exists("user-card-name")) {
-        $("user-card-name").textContent = getCurrentDisplayName();
+        $("user-card-name").textContent = getCurrentDisplayName(true);
         $("user-card-name").style.fontFamily = userProfile?.nameFont || "Inter";
         $("user-card-name").style.color = getCurrentColor();
         $("user-card-name").dataset.userId = currentUser.uid;
@@ -501,10 +504,16 @@ async function loadDiscoverServers(search = "") {
             list.innerHTML = "<p class='empty-hint'>Nenhum servidor encontrado.</p>";
             return;
         }
-        let servers = Object.entries(snap.val()).map(([id, s]) => ({ id, ...s }));
+        let servers = Object.entries(snap.val())
+            .map(([id, s]) => ({ id, ...s }))
+            .filter(s => !s.deleted);
         if (search) {
             const q = search.toLowerCase();
-            servers = servers.filter(s => (s.name || "").toLowerCase().includes(q));
+            servers = servers.filter(s =>
+                (s.name || "").toLowerCase().includes(q) ||
+                (s.description || "").toLowerCase().includes(q) ||
+                (Array.isArray(s.tags) ? s.tags.join(" ") : "").toLowerCase().includes(q)
+            );
         }
         list.innerHTML = "";
         if (!servers.length) {
@@ -512,13 +521,15 @@ async function loadDiscoverServers(search = "") {
             return;
         }
         servers.slice(0, 50).forEach(server => {
+            const tags = Array.isArray(server.tags) ? server.tags : [];
             const card = document.createElement("div");
             card.className = "discover-card";
             card.innerHTML = `
                 <img class="discover-icon" src="${escapeAttribute(server.iconURL || createDefaultAvatar(server.name))}" alt="">
                 <div class="discover-info">
-                    <strong>${escapeHTML(server.name || "Servidor")}</strong>
-                    <span class="meta">${server.slug || server.id}</span>
+                    <strong>${escapeHTML(server.name || "Servidor")}${server.nsfw ? ' <span class="role-badge">18+</span>' : ""}</strong>
+                    <span class="meta">${escapeHTML((server.description || server.slug || server.id || "").slice(0, 80))}</span>
+                    <div class="tags-list" style="margin-top:6px">${tags.map(t => `<span class="tag">${escapeHTML(t)}</span>`).join("")}</div>
                 </div>
                 <button type="button" class="btn-primary btn-sm" data-join="${server.id}">Entrar</button>
             `;
@@ -570,9 +581,17 @@ async function openServerSettings() {
         return;
     }
     if (exists("server-name-edit")) $("server-name-edit").value = server.name || "";
+    if (exists("server-desc-edit")) $("server-desc-edit").value = server.description || "";
+    if (exists("server-icon-url")) $("server-icon-url").value = server.iconURL?.startsWith("http") ? server.iconURL : "";
+    if (exists("server-banner-url")) $("server-banner-url").value = server.bannerURL?.startsWith("http") ? server.bannerURL : "";
+    if (exists("server-tags-edit")) $("server-tags-edit").value = Array.isArray(server.tags) ? server.tags.join(", ") : (server.tags || "");
+    if (exists("server-slug-edit")) $("server-slug-edit").value = server.slug || "";
+    if (exists("server-verification-edit")) $("server-verification-edit").value = server.verificationLevel || "none";
+    if (exists("server-nsfw-edit")) $("server-nsfw-edit").checked = !!server.nsfw;
+    renderServerTagsPreview(server.tags);
     if (exists("server-invite-link")) {
         const slug = server.slug || currentServerId;
-        $("server-invite-link").value = `https://exdowner.github.io/Union/${slug}`;
+        $("server-invite-link").value = `https://exdowner.github.io/Union/?invite=${slug}`;
     }
     if (exists("server-icon-preview")) {
         $("server-icon-preview").src = server.iconURL || createDefaultAvatar(server.name);
@@ -584,12 +603,29 @@ async function openServerSettings() {
     }
     const isOwner = server.ownerId === currentUser?.uid;
     $("delete-server-btn")?.classList.toggle("hidden", !isOwner);
-    // Desabilita edição se não for dono
     const canEdit = !!isOwner;
-    ["server-name-edit", "server-icon-edit", "server-banner-edit", "save-server-overview"].forEach(id => {
+    [
+        "server-name-edit", "server-desc-edit", "server-icon-edit", "server-banner-edit",
+        "server-icon-url", "server-banner-url", "server-tags-edit", "server-slug-edit",
+        "server-verification-edit", "server-nsfw-edit", "save-server-overview", "create-role-btn"
+    ].forEach(id => {
         const el = $(id);
         if (el) el.disabled = !canEdit;
     });
+    if (exists("server-settings-hint")) {
+        $("server-settings-hint").textContent = canEdit
+            ? "Você é o dono — pode editar tudo."
+            : "Somente o dono pode editar este servidor.";
+    }
+}
+
+function renderServerTagsPreview(tags) {
+    const box = $("server-tags-preview");
+    if (!box) return;
+    const list = Array.isArray(tags)
+        ? tags
+        : String(tags || "").split(",").map(t => t.trim()).filter(Boolean);
+    box.innerHTML = list.map(t => `<span class="tag">${escapeHTML(t)}</span>`).join("");
 }
 
 $("back-from-server-settings")?.addEventListener("click", () => {
@@ -605,22 +641,75 @@ $("save-server-overview")?.addEventListener("click", async () => {
     const name = ($("server-name-edit")?.value || "").trim();
     if (!name) return toast("Nome obrigatório.");
 
-    const updates = { name };
+    const tagsRaw = ($("server-tags-edit")?.value || "").trim();
+    const tags = tagsRaw
+        ? tagsRaw.split(",").map(t => t.trim().toLowerCase().slice(0, 24)).filter(Boolean).slice(0, 8)
+        : [];
+
+    let slug = ($("server-slug-edit")?.value || "").trim().toLowerCase()
+        .replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "").slice(0, 40);
+    if (!slug) slug = name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "").slice(0, 40);
+
+    const updates = {
+        name,
+        description: ($("server-desc-edit")?.value || "").trim().slice(0, 300),
+        tags,
+        slug,
+        verificationLevel: $("server-verification-edit")?.value || "none",
+        nsfw: !!$("server-nsfw-edit")?.checked
+    };
+
     const iconFile = $("server-icon-edit")?.files?.[0];
     const bannerFile = $("server-banner-edit")?.files?.[0];
+    const iconUrl = normalizeURL(($("server-icon-url")?.value || "").trim());
+    const bannerUrl = normalizeURL(($("server-banner-url")?.value || "").trim());
 
     try {
         if (iconFile) {
-            updates.iconURL = await convertImage(iconFile, { maxWidth: 512, maxHeight: 512, quality: 0.82 });
+            updates.iconURL = iconFile.type === "image/gif"
+                ? await fileToDataURL(iconFile)
+                : await convertImage(iconFile, { maxWidth: 512, maxHeight: 512, quality: 0.82 });
+        } else if (iconUrl) {
+            updates.iconURL = iconUrl;
         }
+
         if (bannerFile) {
-            updates.bannerURL = await convertImage(bannerFile, { maxWidth: 1920, maxHeight: 400, quality: 0.8 });
+            updates.bannerURL = bannerFile.type === "image/gif"
+                ? await fileToDataURL(bannerFile)
+                : await convertImage(bannerFile, { maxWidth: 1920, maxHeight: 400, quality: 0.8 });
+        } else if (bannerUrl) {
+            updates.bannerURL = bannerUrl;
         }
+
         await safeUpdate(`servers/${currentServerId}`, updates);
+        serverCache[currentServerId] = { ...server, ...updates, id: currentServerId };
         toast("Servidor atualizado.");
         if (exists("current-server-name")) $("current-server-name").textContent = name;
+        if (exists("server-invite-link")) {
+            $("server-invite-link").value = `https://exdowner.github.io/Union/?invite=${slug}`;
+        }
+        renderServerTagsPreview(tags);
+        renderServerList();
     } catch (err) {
-        toast("Erro: " + err.message);
+        console.error(err);
+        toast("Erro ao salvar: " + (err.message || err.code || "permission denied"));
+    }
+});
+
+$("server-tags-edit")?.addEventListener("input", (e) => {
+    renderServerTagsPreview(e.target.value);
+});
+
+$("server-icon-url")?.addEventListener("input", (e) => {
+    const url = normalizeURL(e.target.value.trim()) || e.target.value.trim();
+    if (url && exists("server-icon-preview")) $("server-icon-preview").src = url;
+});
+
+$("server-banner-url")?.addEventListener("input", (e) => {
+    const url = normalizeURL(e.target.value.trim()) || e.target.value.trim();
+    if (exists("server-banner-preview")) {
+        $("server-banner-preview").style.backgroundImage = url ? `url("${escapeAttribute(url)}")` : "";
+        $("server-banner-preview").style.backgroundSize = "cover";
     }
 });
 
@@ -643,17 +732,42 @@ $("delete-server-btn")?.addEventListener("click", async () => {
     if (!server || server.ownerId !== currentUser.uid) return toast("Só o dono pode excluir.");
     if (!confirm(`Excluir o servidor "${server.name}" permanentemente?`)) return;
 
+    const sid = currentServerId;
+    const errors = [];
     try {
-        await remove(databaseRef(`servers/${currentServerId}`));
-        await remove(databaseRef(`channels/${currentServerId}`));
-        await remove(databaseRef(`serverMembers/${currentServerId}`));
-        await remove(databaseRef(`userServers/${currentUser.uid}/${currentServerId}`));
-        toast("Servidor excluído.");
+        // Remove vínculo do usuário primeiro (quase sempre permitido)
+        try { await remove(databaseRef(`userServers/${currentUser.uid}/${sid}`)); }
+        catch (e) { errors.push("userServers: " + e.message); }
+
+        try { await remove(databaseRef(`serverMembers/${sid}`)); }
+        catch (e) { errors.push("members: " + e.message); }
+
+        try { await remove(databaseRef(`channels/${sid}`)); }
+        catch (e) { errors.push("channels: " + e.message); }
+
+        try { await remove(databaseRef(`messages/${sid}`)); }
+        catch (e) { /* opcional */ }
+
+        try { await remove(databaseRef(`servers/${sid}`)); }
+        catch (e) {
+            // Fallback: marca como deletado se a rule bloquear remove
+            try {
+                await safeUpdate(`servers/${sid}`, { deleted: true, name: "[deletado]", ownerId: server.ownerId });
+            } catch (e2) {
+                errors.push("servers: " + e.message);
+            }
+        }
+
+        delete serverCache[sid];
         currentServerId = null;
+        currentChannelId = null;
+        toast(errors.length ? ("Parcial: " + errors.join(" | ")) : "Servidor excluído.");
         showView(null);
         $("home-pill")?.click();
+        renderServerList();
     } catch (err) {
-        toast("Erro ao excluir: " + err.message);
+        toast("Erro ao excluir: " + (err.message || err.code || "permission-denied"));
+        console.error(err);
     }
 });
 
@@ -662,11 +776,12 @@ document.querySelectorAll(".settings-tab").forEach(tab => {
         document.querySelectorAll(".settings-tab").forEach(t => t.classList.remove("active"));
         tab.classList.add("active");
         const id = tab.dataset.stab;
-        ["overview", "roles", "members", "bans"].forEach(p => {
+        ["overview", "roles", "emojis", "members", "bans"].forEach(p => {
             $(`stab-${p}`)?.classList.toggle("hidden", p !== id);
         });
         if (id === "members") loadMembers();
         if (id === "roles") loadRoles();
+        if (id === "emojis") loadServerEmojis();
         if (id === "bans") loadBans();
     });
 });
@@ -675,19 +790,33 @@ async function loadMembers() {
     const list = $("members-list");
     if (!list || !currentServerId) return;
     list.innerHTML = "<p class='empty-hint'>Carregando...</p>";
+    const server = serverCache[currentServerId];
+    const isOwner = server?.ownerId === currentUser?.uid;
     try {
         const snap = await safeGet(`serverMembers/${currentServerId}`);
-        const members = snap.exists() ? Object.keys(snap.val()) : [];
+        const members = snap.exists() ? Object.entries(snap.val()) : [];
+        const rolesSnap = await safeGet(`servers/${currentServerId}/roles`);
+        const roles = rolesSnap.exists() ? Object.entries(rolesSnap.val()) : [];
         list.innerHTML = "";
-        for (const uid of members) {
+        for (const [uid, raw] of members) {
             const uSnap = await safeGet(`users/${uid}`);
             const u = uSnap.exists() ? uSnap.val() : {};
+            const memberRoles = (raw && typeof raw === "object" && raw.roles) ? raw.roles : [];
             const div = document.createElement("div");
-            div.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)";
+            div.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);flex-wrap:wrap";
+            let roleSelect = "";
+            if (isOwner && uid !== server.ownerId) {
+                roleSelect = `<select data-assign-role="${uid}" style="max-width:140px;padding:6px 8px;font-size:12px">
+                    <option value="">Sem cargo</option>
+                    ${roles.map(([rid, r]) => `<option value="${rid}" ${memberRoles.includes(rid) ? "selected" : ""}>${escapeHTML(r.name || "Cargo")}</option>`).join("")}
+                </select>`;
+            }
+            const roleNames = roles.filter(([rid]) => memberRoles.includes(rid)).map(([, r]) => r.name).join(", ");
             div.innerHTML = `
                 <img class="avatar avatar-sm" src="${escapeAttribute(u.photoURL || createDefaultAvatar(uid))}" alt="">
-                <span style="flex:1">${escapeHTML(u.displayName || "Usuário")}</span>
-                <button type="button" class="btn-secondary" data-kick="${uid}" style="padding:4px 10px;font-size:12px">Remover</button>
+                <span style="flex:1;min-width:80px">${escapeHTML(u.displayName || "Usuário")}${uid === server?.ownerId ? " 👑" : ""}${roleNames ? ` <span class="role-badge">${escapeHTML(roleNames)}</span>` : ""}</span>
+                ${roleSelect}
+                ${isOwner && uid !== currentUser.uid ? `<button type="button" class="btn-secondary" data-kick="${uid}" style="padding:4px 10px;font-size:12px">Remover</button>` : ""}
             `;
             list.appendChild(div);
         }
@@ -704,6 +833,22 @@ async function loadMembers() {
                 loadMembers();
             });
         });
+        list.querySelectorAll("[data-assign-role]").forEach(sel => {
+            sel.addEventListener("change", async () => {
+                const uid = sel.dataset.assignRole;
+                const rid = sel.value;
+                try {
+                    await safeSet(`serverMembers/${currentServerId}/${uid}`, {
+                        roles: rid ? [rid] : [],
+                        joinedAt: serverTimestamp()
+                    });
+                    toast(rid ? "Cargo atribuído." : "Cargo removido.");
+                    loadMembers();
+                } catch (e) {
+                    toast("Erro: " + e.message);
+                }
+            });
+        });
     } catch {
         list.innerHTML = "<p class='empty-hint'>Erro ao carregar.</p>";
     }
@@ -714,7 +859,7 @@ async function loadRoles() {
     if (!list || !currentServerId) return;
     list.innerHTML = "<p class='empty-hint'>Carregando cargos...</p>";
     try {
-        const snap = await safeGet(`serverRoles/${currentServerId}`);
+        const snap = await safeGet(`servers/${currentServerId}/roles`);
         const roles = snap.exists() ? Object.entries(snap.val()) : [];
         list.innerHTML = "";
 
@@ -767,7 +912,7 @@ async function loadRoles() {
         list.querySelectorAll("[data-edit-role]").forEach(btn => {
             btn.addEventListener("click", async () => {
                 const id = btn.dataset.editRole;
-                const snap = await safeGet(`serverRoles/${currentServerId}/${id}`);
+                const snap = await safeGet(`servers/${currentServerId}/roles/${id}`);
                 if (!snap.exists()) return;
                 openRoleModal(id, snap.val());
             });
@@ -775,7 +920,7 @@ async function loadRoles() {
         list.querySelectorAll("[data-del-role]").forEach(btn => {
             btn.addEventListener("click", async () => {
                 if (!confirm("Excluir este cargo?")) return;
-                await remove(databaseRef(`serverRoles/${currentServerId}/${btn.dataset.delRole}`));
+                await remove(databaseRef(`servers/${currentServerId}/roles/${btn.dataset.delRole}`));
                 toast("Cargo excluído.");
                 loadRoles();
             });
@@ -845,10 +990,10 @@ $("confirm-role")?.addEventListener("click", async () => {
     const editId = ($("role-edit-id")?.value || "").trim();
     try {
         if (editId) {
-            await safeUpdate(`serverRoles/${currentServerId}/${editId}`, payload);
+            await safeUpdate(`servers/${currentServerId}/roles/${editId}`, payload);
             toast("Cargo atualizado!");
         } else {
-            await safePush(`serverRoles/${currentServerId}`, payload);
+            await safePush(`servers/${currentServerId}/roles`, payload);
             toast("Cargo criado!");
         }
         closeModals();
@@ -870,14 +1015,144 @@ $("perm-admin")?.addEventListener("change", (e) => {
     });
 });
 
+
 // =====================================================
-// CONVITE POR URL
+// EMOJIS DO SERVIDOR (estilo Discord, tamanho emoji)
+// =====================================================
+async function loadServerEmojis() {
+    const list = $("server-emojis-list");
+    if (!list || !currentServerId) return;
+    list.innerHTML = "<p class='empty-hint'>Carregando...</p>";
+    try {
+        const snap = await safeGet(`servers/${currentServerId}/emojis`);
+        const emojis = snap.exists() ? Object.entries(snap.val()) : [];
+        list.innerHTML = "";
+        if (!emojis.length) {
+            list.innerHTML = "<p class='empty-hint'>Nenhum emoji ainda.</p>";
+            return;
+        }
+        emojis.forEach(([id, em]) => {
+            const div = document.createElement("div");
+            div.className = "server-emoji-item";
+            div.innerHTML = `
+                <button type="button" class="emoji-del" data-del-emoji="${id}" title="Remover">×</button>
+                <img src="${escapeAttribute(em.url)}" alt=":${escapeAttribute(em.name)}:">
+                <span>:${escapeHTML(em.name)}:</span>
+            `;
+            list.appendChild(div);
+        });
+        list.querySelectorAll("[data-del-emoji]").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                if (!confirm("Remover emoji?")) return;
+                try {
+                    await remove(databaseRef(`servers/${currentServerId}/emojis/${btn.dataset.delEmoji}`));
+                    toast("Emoji removido.");
+                    loadServerEmojis();
+                } catch (e) {
+                    toast("Erro: " + e.message);
+                }
+            });
+        });
+    } catch (e) {
+        list.innerHTML = `<p class='empty-hint'>Erro: ${escapeHTML(e.message)}</p>`;
+    }
+}
+
+async function addServerEmoji(name, url) {
+    if (!currentServerId || !currentUser) return;
+    const server = serverCache[currentServerId];
+    if (!server || server.ownerId !== currentUser.uid) return toast("Só o dono pode adicionar emojis.");
+    name = String(name || "").trim().toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 32);
+    if (!name) return toast("Nome inválido.");
+    if (!url) return toast("URL/imagem obrigatória.");
+    try {
+        await safePush(`servers/${currentServerId}/emojis`, {
+            name,
+            url,
+            animated: /\\.gif(\\?|$)/i.test(url) || String(url).includes("image/gif"),
+            createdAt: serverTimestamp()
+        });
+        toast(`Emoji :${name}: adicionado!`);
+        loadServerEmojis();
+    } catch (e) {
+        toast("Erro ao salvar emoji: " + (e.message || "permission-denied — atualize as Rules do Firebase"));
+    }
+}
+
+$("server-emoji-file")?.addEventListener("change", async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const name = ($("server-emoji-name")?.value || file.name.replace(/\\.[^.]+$/, "")).trim();
+    try {
+        let url;
+        if (file.type === "image/gif") url = await fileToDataURL(file);
+        else url = await convertImage(file, { maxWidth: 128, maxHeight: 128, quality: 0.9, maxSizeMB: 2 });
+        await addServerEmoji(name, url);
+        e.target.value = "";
+        if (exists("server-emoji-name")) $("server-emoji-name").value = "";
+    } catch (err) {
+        toast("Erro: " + err.message);
+    }
+});
+
+$("server-emoji-url-btn")?.addEventListener("click", () => {
+    if (exists("server-emoji-url-name")) {
+        $("server-emoji-url-name").value = ($("server-emoji-name")?.value || "").trim();
+    }
+    openModal("modal-server-emoji-url");
+});
+
+$("confirm-server-emoji-url")?.addEventListener("click", async () => {
+    const name = ($("server-emoji-url-name")?.value || "").trim();
+    const url = normalizeURL(($("server-emoji-url-input")?.value || "").trim());
+    if (!url) return toast("URL inválida.");
+    await addServerEmoji(name, url);
+    closeModals();
+    if (exists("server-emoji-url-input")) $("server-emoji-url-input").value = "";
+});
+
+// Render :nome: nos textos de mensagem
+function renderCustomEmojis(text, emojiMap) {
+    if (!text || !emojiMap) return escapeHTML(text || "");
+    let out = escapeHTML(text);
+    out = out.replace(/:([a-z0-9_]{1,32}):/gi, (m, name) => {
+        const em = emojiMap[name.toLowerCase()];
+        if (!em) return m;
+        return `<img class="msg-emoji" src="${escapeAttribute(em.url)}" alt=":${escapeAttribute(em.name)}:" title=":${escapeAttribute(em.name)}:">`;
+    });
+    return out;
+}
+
+let serverEmojiCache = {};
+async function refreshServerEmojiCache() {
+    serverEmojiCache = {};
+    if (!currentServerId) return;
+    try {
+        const snap = await safeGet(`servers/${currentServerId}/emojis`);
+        if (!snap.exists()) return;
+        Object.values(snap.val()).forEach(em => {
+            if (em?.name) serverEmojiCache[String(em.name).toLowerCase()] = em;
+        });
+    } catch (_) {}
+}
+
+// =====================================================
+// CONVITE POR URL (query ?invite=slug — não dá 404 no GitHub Pages)
 // =====================================================
 function checkInviteFromURL() {
-    const path = window.location.pathname || "";
-    const match = path.match(/\/Union\/([a-z0-9-]+)/i) || window.location.hash.match(/#invite\/([a-z0-9-]+)/i);
-    if (!match) return;
-    const slugOrId = match[1];
+    const params = new URLSearchParams(window.location.search || "");
+    let slugOrId = params.get("invite") || "";
+    if (!slugOrId) {
+        const hash = window.location.hash || "";
+        const hm = hash.match(/#(?:invite\/)?([a-z0-9-]+)/i);
+        if (hm) slugOrId = hm[1];
+    }
+    if (!slugOrId) {
+        const path = window.location.pathname || "";
+        const pm = path.match(/\/Union\/([a-z0-9-]+)\/?$/i);
+        if (pm) slugOrId = pm[1];
+    }
+    if (!slugOrId || slugOrId === "index.html") return;
     pendingInviteId = slugOrId;
     openInviteModal(slugOrId);
 }
@@ -887,15 +1162,13 @@ async function openInviteModal(slugOrId) {
         let server = null;
         let serverId = slugOrId;
 
-        // Tenta por ID direto
         let snap = await safeGet(`servers/${slugOrId}`);
-        if (snap.exists()) {
+        if (snap.exists() && !snap.val()?.deleted) {
             server = snap.val();
         } else {
-            // Busca por slug
             const all = await safeGet("servers");
             if (all.exists()) {
-                const found = Object.entries(all.val()).find(([id, s]) => s.slug === slugOrId);
+                const found = Object.entries(all.val()).find(([id, s]) => !s.deleted && (s.slug === slugOrId || id === slugOrId));
                 if (found) {
                     serverId = found[0];
                     server = found[1];
@@ -903,25 +1176,50 @@ async function openInviteModal(slugOrId) {
             }
         }
 
-        if (!server) return toast("Servidor não encontrado.");
+        if (!server) return toast("Convite inválido ou servidor não encontrado.");
 
         pendingInviteId = serverId;
         if (exists("invite-server-name")) $("invite-server-name").textContent = server.name || "Servidor";
         if (exists("invite-server-icon")) $("invite-server-icon").src = server.iconURL || createDefaultAvatar(server.name);
+        if (exists("invite-server-desc")) {
+            $("invite-server-desc").textContent = server.description
+                || "Ao entrar, este servidor poderá ver seu nome, foto e banner.";
+        }
+        if (exists("invite-server-tags")) {
+            const tags = Array.isArray(server.tags) ? server.tags : [];
+            $("invite-server-tags").innerHTML = tags.map(t => `<span class="tag">${escapeHTML(t)}</span>`).join("");
+        }
         openModal("modal-invite");
-    } catch {
+    } catch (e) {
+        console.error(e);
         toast("Erro ao carregar convite.");
     }
 }
 
+function clearInviteFromURL() {
+    if (!window.history?.replaceState) return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("invite");
+    url.hash = "";
+    // Mantém path base do GitHub Pages
+    const base = url.pathname.includes("/Union") ? url.pathname.replace(/\/Union\/.+$/, "/Union/") : url.pathname;
+    url.pathname = base.endsWith("/") || base.endsWith("index.html") ? base : base;
+    window.history.replaceState({}, "", url.pathname + (url.search || "") + url.hash);
+}
+
 $("confirm-join-invite")?.addEventListener("click", async () => {
-    if (!pendingInviteId || !currentUser) return;
+    if (!pendingInviteId || !currentUser) return toast("Faça login para aceitar o convite.");
     await joinServerById(pendingInviteId);
     pendingInviteId = null;
-    // Limpa a URL
-    if (window.history?.replaceState) {
-        window.history.replaceState({}, "", window.location.pathname.split("/Union")[0] || "/");
-    }
+    clearInviteFromURL();
+    closeModals();
+});
+
+$("decline-invite-btn")?.addEventListener("click", () => {
+    pendingInviteId = null;
+    clearInviteFromURL();
+    closeModals();
+    toast("Convite recusado.");
 });
 
 // =====================================================
@@ -987,6 +1285,8 @@ function renderChannels(groups) {
 
 $("confirm-create-channel")?.addEventListener("click", async () => {
     if (!currentServerId) return toast("Selecione um servidor.");
+    const can = await userHasAdminPower(currentServerId, currentUser?.uid);
+    if (!can) return toast("Sem permissão (precisa ser dono ou cargo ADM / gerenciar canais).");
     const raw = $("new-channel-name")?.value.trim();
     const type = $("new-channel-type")?.value;
     if (!raw) return toast("Dê um nome.");
@@ -1031,7 +1331,7 @@ function selectChannel(ch) {
 }
 
 function showView(type) {
-    ["text", "voice", "forum", "server-settings", "discover"].forEach(t => {
+    ["text", "voice", "forum", "server-settings", "discover", "friends", "dm"].forEach(t => {
         $("view-" + t)?.classList.toggle("hidden", t !== type);
     });
 }
@@ -1058,7 +1358,7 @@ function listenMessages() {
                 const time = normalizeTimestamp(msg.createdAt)
                     ? new Date(normalizeTimestamp(msg.createdAt)).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
                     : "";
-                let content = escapeHTML(msg.text || "");
+                let content = renderCustomEmojis(msg.text || "", serverEmojiCache);
                 if (msg.image) content += `<div class="msg-image"><img src="${escapeAttribute(msg.image)}" alt="" loading="lazy"></div>`;
                 if (msg.sticker) content += `<div class="msg-sticker"><img src="${escapeAttribute(msg.sticker)}" alt="" loading="lazy"></div>`;
                 if (msg.audio) content += `<div class="msg-audio"><audio controls src="${escapeAttribute(msg.audio)}"></audio></div>`;
@@ -1530,8 +1830,16 @@ function loadProfileFields() {
     }
 }
 
-$("open-profile-btn")?.addEventListener("click", () => {
+$("open-profile-btn")?.addEventListener("click", async () => {
     loadProfileFields();
+    await populateClanTagSelect();
+    if (exists("privacy-profile-visibility")) $("privacy-profile-visibility").value = userProfile?.privacy?.profileVisibility || "everyone";
+    if (exists("privacy-allow-dms")) $("privacy-allow-dms").checked = userProfile?.privacy?.allowDms !== false;
+    if (exists("privacy-show-online")) $("privacy-show-online").checked = userProfile?.privacy?.showOnline !== false;
+    const ap = userProfile?.appearance || {};
+    if (exists("appearance-bg-color")) $("appearance-bg-color").value = ap.bgColor || "#0e1013";
+    if (exists("appearance-panel-opacity")) $("appearance-panel-opacity").value = ap.panelOpacity ?? 1;
+    if (exists("appearance-bg-url")) $("appearance-bg-url").value = ap.bgImage && String(ap.bgImage).startsWith("http") ? ap.bgImage : "";
     openModal("modal-profile");
     updateFontPreview();
 });
@@ -1596,6 +1904,15 @@ $("confirm-profile")?.addEventListener("click", async () => {
     btn.disabled = true;
     btn.textContent = "Salvando...";
 
+    const clanServerId = ($("profile-clan-tag")?.value || "").trim();
+    let clanTag = "";
+    if (clanServerId) {
+        const s = serverCache[clanServerId];
+        const tagBase = (s?.slug || s?.name || "SRV").toString().slice(0, 8).toUpperCase();
+        clanTag = "✅" + tagBase;
+    }
+    const bgFromFile = $("appearance-bg-url")?.dataset?.local || "";
+    const bgUrl = bgFromFile || normalizeURL(($("appearance-bg-url")?.value || "").trim()) || "";
     const updates = {
         displayName: ($("profile-name-input")?.value || "").trim().slice(0, 32) || "Usuário",
         bio: ($("profile-bio-input")?.value || "").trim().slice(0, 190),
@@ -1603,7 +1920,19 @@ $("confirm-profile")?.addEventListener("click", async () => {
         nameFont: $("profile-font-input")?.value || "Inter",
         socialLinks: ($("profile-social-input")?.value || "").trim().slice(0, 500),
         customStatus: ($("profile-status-input")?.value || "").trim().slice(0, 32),
-        presence: $("profile-presence-input")?.value || "online"
+        presence: $("profile-presence-input")?.value || "online",
+        clanTag,
+        clanTagServerId: clanServerId || null,
+        privacy: {
+            profileVisibility: $("privacy-profile-visibility")?.value || "everyone",
+            allowDms: !!$("privacy-allow-dms")?.checked,
+            showOnline: !!$("privacy-show-online")?.checked
+        },
+        appearance: {
+            bgColor: $("appearance-bg-color")?.value || "#0e1013",
+            panelOpacity: parseFloat($("appearance-panel-opacity")?.value || "1"),
+            bgImage: bgUrl || null
+        }
     };
 
     try {
@@ -1645,6 +1974,7 @@ $("confirm-profile")?.addEventListener("click", async () => {
         newAvatarFile = null;
         newBannerFile = null;
         renderUserCard();
+        applyAppearance(updates.appearance);
         closeModals();
         toast("Perfil salvo!");
     } catch (err) {
@@ -1773,6 +2103,397 @@ document.addEventListener("click", (e) => {
 window.addEventListener("beforeunload", () => {
     try { leaveVoiceChannel(); } catch {}
 });
+
+
+// =====================================================
+// PERMISSÕES (dono ou cargo ADM)
+// =====================================================
+async function userHasAdminPower(serverId, uid) {
+    const server = serverCache[serverId];
+    if (!server) return false;
+    if (server.ownerId === uid) return true;
+    try {
+        const mem = await safeGet(`serverMembers/${serverId}/${uid}`);
+        if (!mem.exists()) return false;
+        const raw = mem.val();
+        const roleIds = (raw && typeof raw === "object" && raw.roles) ? raw.roles : [];
+        if (!roleIds.length) return false;
+        const rolesSnap = await safeGet(`servers/${serverId}/roles`);
+        if (!rolesSnap.exists()) return false;
+        const roles = rolesSnap.val();
+        return roleIds.some(rid => roles[rid]?.permissions?.admin || roles[rid]?.permissions?.manageChannels);
+    } catch {
+        return false;
+    }
+}
+
+// =====================================================
+// AMIGOS / DM / DENÚNCIA / TAG / APARÊNCIA
+// =====================================================
+const REPORT_WEBHOOK = "https://discord.com/api/webhooks/1538717876440010892/tBySoprNe_dQAMR-8im2k8SFzW1G3sgYOh5sMryyzvyqYs3lQOlEn085d_E2K5hUWqTM";
+let currentDmUid = null;
+let dmListener = null;
+let pendingDmFile = null;
+
+$("friends-btn")?.addEventListener("click", () => {
+    showView("friends");
+    loadFriendsList();
+    if (exists("friends-search")) $("friends-search").value = "";
+    if (exists("friends-results")) $("friends-results").innerHTML = "";
+});
+
+$("friends-search")?.addEventListener("input", async (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    const box = $("friends-results");
+    if (!box) return;
+    if (q.length < 2) { box.innerHTML = ""; return; }
+    box.innerHTML = "<p class='empty-hint'>Buscando...</p>";
+    try {
+        const snap = await safeGet("users");
+        if (!snap.exists()) { box.innerHTML = "<p class='empty-hint'>Ninguém encontrado.</p>"; return; }
+        const hits = Object.entries(snap.val())
+            .filter(([uid, u]) => uid !== currentUser?.uid && (u.displayName || "").toLowerCase().includes(q))
+            .slice(0, 20);
+        box.innerHTML = "";
+        hits.forEach(([uid, u]) => {
+            const card = document.createElement("div");
+            card.className = "discover-card";
+            card.innerHTML = `
+                <img class="discover-icon" src="${escapeAttribute(u.photoURL || createDefaultAvatar(uid))}" alt="">
+                <div class="discover-info">
+                    <strong>${escapeHTML(u.displayName || "User")}${u.clanTag ? ` <span class="role-badge">${escapeHTML(u.clanTag)}</span>` : ""}</strong>
+                    <span class="meta">${escapeHTML(u.customStatus || u.bio || "").slice(0, 60)}</span>
+                </div>
+                <button type="button" class="btn-secondary btn-sm" data-add-friend="${uid}">Amigo</button>
+                <button type="button" class="btn-primary btn-sm" data-open-dm="${uid}">DM</button>
+            `;
+            box.appendChild(card);
+        });
+        if (!hits.length) box.innerHTML = "<p class='empty-hint'>Ninguém encontrado.</p>";
+        box.querySelectorAll("[data-add-friend]").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                try {
+                    await safeSet(`friends/${currentUser.uid}/${btn.dataset.addFriend}`, true);
+                    await safeSet(`friends/${btn.dataset.addFriend}/${currentUser.uid}`, true);
+                    toast("Amigo adicionado!");
+                    loadFriendsList();
+                } catch (e) { toast("Erro: " + e.message); }
+            });
+        });
+        box.querySelectorAll("[data-open-dm]").forEach(btn => {
+            btn.addEventListener("click", () => openDm(btn.dataset.openDm));
+        });
+    } catch (e) {
+        box.innerHTML = `<p class='empty-hint'>Erro: ${escapeHTML(e.message)}</p>`;
+    }
+});
+
+async function loadFriendsList() {
+    const box = $("friends-list");
+    if (!box || !currentUser) return;
+    box.innerHTML = "<p class='empty-hint'>Carregando...</p>";
+    try {
+        const snap = await safeGet(`friends/${currentUser.uid}`);
+        if (!snap.exists()) { box.innerHTML = "<p class='empty-hint'>Nenhum amigo ainda.</p>"; return; }
+        box.innerHTML = "";
+        for (const uid of Object.keys(snap.val())) {
+            const uSnap = await safeGet(`users/${uid}`);
+            const u = uSnap.exists() ? uSnap.val() : {};
+            const card = document.createElement("div");
+            card.className = "discover-card";
+            card.innerHTML = `
+                <img class="discover-icon" src="${escapeAttribute(u.photoURL || createDefaultAvatar(uid))}" alt="">
+                <div class="discover-info"><strong>${escapeHTML(u.displayName || "User")}</strong></div>
+                <button type="button" class="btn-primary btn-sm" data-open-dm="${uid}">DM</button>
+            `;
+            box.appendChild(card);
+        }
+        box.querySelectorAll("[data-open-dm]").forEach(btn => {
+            btn.addEventListener("click", () => openDm(btn.dataset.openDm));
+        });
+    } catch {
+        box.innerHTML = "<p class='empty-hint'>Erro ao carregar amigos.</p>";
+    }
+}
+
+function dmIdFor(a, b) {
+    return [a, b].sort().join("_");
+}
+
+async function openDm(uid) {
+    if (!currentUser || !uid) return;
+    currentDmUid = uid;
+    const uSnap = await safeGet(`users/${uid}`);
+    const u = uSnap.exists() ? uSnap.val() : {};
+    if (exists("dm-title")) $("dm-title").textContent = u.displayName || "DM";
+    showView("dm");
+    listenDm(uid);
+}
+
+function stopDmListener() {
+    if (dmListener) {
+        try { off(dmListener.reference, "value", dmListener.callback); } catch {}
+        dmListener = null;
+    }
+}
+
+function listenDm(uid) {
+    stopDmListener();
+    const id = dmIdFor(currentUser.uid, uid);
+    const reference = databaseRef(`dms/${id}/messages`);
+    const callback = (snap) => {
+        const root = $("dm-messages");
+        if (!root) return;
+        root.innerHTML = "";
+        Object.entries(snap.val() || {})
+            .sort((a, b) => normalizeTimestamp(a[1]?.createdAt) - normalizeTimestamp(b[1]?.createdAt))
+            .forEach(([, msg]) => {
+                const el = document.createElement("div");
+                el.className = "message";
+                let content = escapeHTML(msg.text || "");
+                if (msg.image) content += `<div class="msg-image"><img src="${escapeAttribute(msg.image)}" alt=""></div>`;
+                el.innerHTML = `
+                    <img class="avatar avatar-sm" src="${escapeAttribute(msg.authorPhoto || createDefaultAvatar(msg.uid))}" alt="">
+                    <div class="message-body">
+                        <div class="message-header"><strong>${escapeHTML(msg.authorName || "User")}</strong></div>
+                        <div class="message-content">${content}</div>
+                    </div>`;
+                root.appendChild(el);
+            });
+        root.scrollTop = root.scrollHeight;
+    };
+    onValue(reference, callback);
+    dmListener = { reference, callback };
+}
+
+$("back-from-dm")?.addEventListener("click", () => {
+    stopDmListener();
+    currentDmUid = null;
+    showView("friends");
+});
+
+$("dm-attach-btn")?.addEventListener("click", () => $("dm-file-input")?.click());
+$("dm-file-input")?.addEventListener("change", (e) => {
+    pendingDmFile = e.target.files?.[0] || null;
+    if (pendingDmFile) toast("Imagem pronta para enviar.");
+});
+
+$("dm-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!currentUser || !currentDmUid) return;
+    const text = ($("dm-input")?.value || "").trim();
+    if (!text && !pendingDmFile) return;
+    const id = dmIdFor(currentUser.uid, currentDmUid);
+    const payload = {
+        uid: currentUser.uid,
+        authorName: getCurrentName(),
+        authorPhoto: getCurrentPhoto(),
+        text,
+        createdAt: serverTimestamp()
+    };
+    try {
+        if (pendingDmFile) {
+            payload.image = pendingDmFile.type === "image/gif"
+                ? await fileToDataURL(pendingDmFile)
+                : await convertImage(pendingDmFile, { maxWidth: 1280, maxHeight: 1280, quality: 0.8 });
+            pendingDmFile = null;
+            if (exists("dm-file-input")) $("dm-file-input").value = "";
+        }
+        await safePush(`dms/${id}/messages`, payload);
+        if (exists("dm-input")) $("dm-input").value = "";
+    } catch (err) {
+        toast("Erro DM: " + err.message);
+    }
+});
+
+$("dm-block-btn")?.addEventListener("click", async () => {
+    if (!currentDmUid || !currentUser) return;
+    if (!confirm("Bloquear este usuário?")) return;
+    await safeSet(`blocks/${currentUser.uid}/${currentDmUid}`, true);
+    toast("Usuário bloqueado.");
+});
+
+$("dm-report-btn")?.addEventListener("click", async () => {
+    if (!currentDmUid) return;
+    const uSnap = await safeGet(`users/${currentDmUid}`);
+    const u = uSnap.exists() ? uSnap.val() : {};
+    if (exists("report-target-name")) $("report-target-name").value = u.displayName || currentDmUid;
+    if (exists("report-target-uid")) $("report-target-uid").value = currentDmUid;
+    if (exists("report-text")) $("report-text").value = "";
+    openModal("modal-report");
+});
+
+$("confirm-report")?.addEventListener("click", async () => {
+    if (!currentUser) return;
+    const targetUid = $("report-target-uid")?.value || "";
+    const targetName = $("report-target-name")?.value || targetUid;
+    const reason = ($("report-text")?.value || "").trim();
+    if (!reason) return toast("Escreva o motivo.");
+    const btn = $("confirm-report");
+    btn.disabled = true;
+    btn.textContent = "Enviando...";
+    let imageUrl = "";
+    try {
+        const file = $("report-image")?.files?.[0];
+        if (file) {
+            imageUrl = file.type === "image/gif" ? await fileToDataURL(file) : await convertImage(file, { maxWidth: 1280, maxHeight: 1280, quality: 0.8 });
+            // data URLs são grandes demais pro Discord às vezes — aviso
+            if (imageUrl.startsWith("data:") && imageUrl.length > 2000) {
+                imageUrl = "[imagem em base64 anexada no app — tamanho grande para preview no Discord]";
+            }
+        }
+        const embed = {
+            title: "🚨 Nova denúncia — Union Chat",
+            color: 15158332,
+            fields: [
+                { name: "Denunciante", value: `${getCurrentName()} (\`${currentUser.uid}\`)`, inline: false },
+                { name: "Denunciado", value: `${targetName} (\`${targetUid}\`)`, inline: false },
+                { name: "Motivo", value: reason.slice(0, 1000), inline: false },
+                { name: "Prova / imagem", value: imageUrl ? String(imageUrl).slice(0, 1000) : "Nenhuma", inline: false }
+            ],
+            timestamp: new Date().toISOString()
+        };
+        await fetch(REPORT_WEBHOOK, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ embeds: [embed] })
+        });
+        // salva também no RTDB
+        await safePush("reports", {
+            from: currentUser.uid,
+            fromName: getCurrentName(),
+            target: targetUid,
+            targetName,
+            reason,
+            image: imageUrl && !String(imageUrl).startsWith("data:") ? imageUrl : null,
+            createdAt: serverTimestamp()
+        });
+        toast("Denúncia enviada.");
+        closeModals();
+    } catch (e) {
+        toast("Erro ao denunciar: " + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = "Enviar denúncia";
+    }
+});
+
+// Clan tag select
+async function populateClanTagSelect() {
+    const sel = $("profile-clan-tag");
+    if (!sel || !currentUser) return;
+    const current = userProfile?.clanTagServerId || "";
+    sel.innerHTML = `<option value="">Nenhuma</option>`;
+    try {
+        const snap = await safeGet(`userServers/${currentUser.uid}`);
+        if (!snap.exists()) return;
+        for (const sid of Object.keys(snap.val())) {
+            const s = serverCache[sid] || (await safeGet(`servers/${sid}`)).val();
+            if (!s || s.deleted) continue;
+            const tag = (s.slug || s.name || "SRV").toString().slice(0, 8).toUpperCase();
+            const opt = document.createElement("option");
+            opt.value = sid;
+            opt.textContent = `✅${tag} — ${s.name || sid}`;
+            if (sid === current) opt.selected = true;
+            sel.appendChild(opt);
+        }
+    } catch {}
+}
+
+// Profile tabs
+document.querySelectorAll(".profile-tab").forEach(tab => {
+    tab.addEventListener("click", () => {
+        document.querySelectorAll(".profile-tab").forEach(t => t.classList.remove("active"));
+        tab.classList.add("active");
+        const id = tab.dataset.ptab;
+        $("ptab-privacy")?.classList.toggle("hidden", id !== "privacy");
+        $("ptab-appearance")?.classList.toggle("hidden", id !== "appearance");
+        // main fields always visible above tabs
+    });
+});
+
+function applyAppearance(settings) {
+    const s = settings || userProfile?.appearance || {};
+    if (s.bgColor) {
+        document.documentElement.style.setProperty("--bg-0", s.bgColor);
+        document.body.style.backgroundColor = s.bgColor;
+    }
+    if (s.panelOpacity != null) {
+        document.documentElement.style.setProperty("--panel-opacity", s.panelOpacity);
+        document.querySelectorAll(".channel-sidebar, .main-header, .message-form, .auth-card").forEach(el => {
+            el.style.opacity = s.panelOpacity;
+        });
+    }
+    if (s.bgImage) {
+        document.body.style.backgroundImage = `url("${s.bgImage}")`;
+        document.body.style.backgroundSize = "cover";
+        document.body.style.backgroundPosition = "center";
+        document.body.style.backgroundAttachment = "fixed";
+    } else {
+        document.body.style.backgroundImage = "";
+    }
+}
+
+$("appearance-bg-file")?.addEventListener("change", async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    try {
+        const url = f.type === "image/gif" ? await fileToDataURL(f) : await convertImage(f, { maxWidth: 1920, maxHeight: 1080, quality: 0.75 });
+        if (exists("appearance-bg-url")) $("appearance-bg-url").value = url.startsWith("http") ? url : "";
+        // store temp on element
+        $("appearance-bg-url").dataset.local = url;
+        applyAppearance({
+            bgColor: $("appearance-bg-color")?.value,
+            panelOpacity: $("appearance-panel-opacity")?.value,
+            bgImage: url
+        });
+        toast("Prévia do fundo aplicada.");
+    } catch (err) {
+        toast("Erro: " + err.message);
+    }
+});
+
+$("appearance-clear-bg")?.addEventListener("click", () => {
+    if (exists("appearance-bg-url")) {
+        $("appearance-bg-url").value = "";
+        delete $("appearance-bg-url").dataset.local;
+    }
+    document.body.style.backgroundImage = "";
+});
+
+$("appearance-bg-color")?.addEventListener("input", (e) => {
+    document.documentElement.style.setProperty("--bg-0", e.target.value);
+    document.body.style.backgroundColor = e.target.value;
+});
+
+// Screen share
+$("share-screen-btn")?.addEventListener("click", async () => {
+    try {
+        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+        toast("Compartilhamento de tela iniciado (navegador).");
+        // anexa preview local
+        const grid = $("video-grid");
+        if (grid) {
+            let tile = document.getElementById("local-screen-tile");
+            if (!tile) {
+                tile = document.createElement("div");
+                tile.id = "local-screen-tile";
+                tile.className = "video-tile";
+                tile.innerHTML = `<video autoplay playsinline muted></video><div class="video-tile-label">Sua tela</div>`;
+                grid.appendChild(tile);
+            }
+            const v = tile.querySelector("video");
+            v.srcObject = stream;
+            stream.getVideoTracks()[0].onended = () => {
+                tile.remove();
+                toast("Compartilhamento encerrado.");
+            };
+        }
+    } catch (e) {
+        toast("Não foi possível compartilhar: " + (e.message || "cancelado"));
+    }
+});
+
 
 (function init() {
     showView(null);

@@ -57,6 +57,9 @@
             <button type="button" class="server-pill server-pill-add" id="add-server-btn" title="Criar servidor">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
             </button>
+            <button type="button" class="server-pill server-pill-friends" id="friends-btn" title="Procurar jogadores">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </button>
             <button type="button" class="server-pill server-pill-discover" id="discover-btn" title="Descobrir servidores">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="12" cy="12" r="10"/>
@@ -158,7 +161,8 @@
                 <div class="voice-stage">
                     <h2 id="voice-channel-name">Canal de voz</h2>
                     <div class="voice-participants" id="voice-participants"></div>
-                    <div class="voice-controls">
+                    <div class="video-grid" id="video-grid"></div>
+                    <div class="voice-controls voice-controls-bar">
                         <button type="button" id="join-voice-btn" class="btn-primary">Entrar no canal de voz</button>
                         <button type="button" id="leave-voice-btn" class="btn-secondary hidden">Sair</button>
                         <button type="button" id="toggle-mic-btn" class="icon-btn hidden" title="Microfone">
@@ -167,8 +171,10 @@
                         <button type="button" id="toggle-cam-btn" class="icon-btn hidden" title="Câmera">
                             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
                         </button>
+                        <button type="button" id="share-screen-btn" class="icon-btn hidden" title="Compartilhar tela">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+                        </button>
                     </div>
-                    <div class="video-grid" id="video-grid"></div>
                 </div>
             </section>
 
@@ -185,6 +191,38 @@
                     </button>
                     <div id="forum-thread-content"></div>
                 </div>
+            </section>
+
+            <!-- AMIGOS / BUSCA -->
+            <section id="view-friends" class="view hidden">
+                <div class="discover-wrap">
+                    <h2>Amigos e jogadores</h2>
+                    <input type="text" id="friends-search" placeholder="Buscar por nick..." autocomplete="off">
+                    <div id="friends-results" class="discover-list"></div>
+                    <h3 style="margin-top:20px;font-family:var(--font-display)">Seus amigos</h3>
+                    <div id="friends-list" class="discover-list"></div>
+                </div>
+            </section>
+
+            <!-- DM -->
+            <section id="view-dm" class="view hidden">
+                <header class="main-header" style="position:relative">
+                    <button type="button" id="back-from-dm" class="icon-btn" title="Voltar">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                    </button>
+                    <span id="dm-title">DM</span>
+                    <div class="main-header-actions">
+                        <button type="button" id="dm-block-btn" class="icon-btn" title="Bloquear">🚫</button>
+                        <button type="button" id="dm-report-btn" class="icon-btn" title="Denunciar">🚩</button>
+                    </div>
+                </header>
+                <div class="messages" id="dm-messages"></div>
+                <form id="dm-form" class="message-form">
+                    <button type="button" id="dm-attach-btn" class="icon-btn" title="Anexar">📎</button>
+                    <input type="file" id="dm-file-input" accept="image/*" class="hidden">
+                    <input type="text" id="dm-input" placeholder="Mensagem privada..." maxlength="2000" autocomplete="off">
+                    <button type="submit" class="btn-primary btn-send">Enviar</button>
+                </form>
             </section>
 
             <!-- DESCOBRIR SERVIDORES -->
@@ -414,6 +452,46 @@
             <label>Redes sociais
                 <input type="text" id="profile-social-input" placeholder="instagram.com/seuuser, github.com/seuuser">
             </label>
+            <label>Tag de servidor (clan)
+                <select id="profile-clan-tag">
+                    <option value="">Nenhuma</option>
+                </select>
+            </label>
+            <p class="empty-hint">A tag aparece no seu nick, tipo ✅NOME, com base nos servidores em que você está.</p>
+
+            <div class="profile-tabs">
+                <button type="button" class="profile-tab active" data-ptab="main">Perfil</button>
+                <button type="button" class="profile-tab" data-ptab="privacy">Privacidade</button>
+                <button type="button" class="profile-tab" data-ptab="appearance">Aparência</button>
+            </div>
+            <div id="ptab-privacy" class="profile-tab-panel hidden">
+                <label>Quem pode ver o perfil completo
+                    <select id="privacy-profile-visibility">
+                        <option value="everyone">Todos</option>
+                        <option value="friends">Somente amigos</option>
+                        <option value="nobody">Ninguém (só eu)</option>
+                    </select>
+                </label>
+                <label class="perm-check"><input type="checkbox" id="privacy-allow-dms" checked> Permitir DMs de qualquer um</label>
+                <label class="perm-check"><input type="checkbox" id="privacy-show-online" checked> Mostrar status online</label>
+            </div>
+            <div id="ptab-appearance" class="profile-tab-panel hidden">
+                <label>Cor de fundo do app
+                    <input type="color" id="appearance-bg-color" value="#0e1013">
+                </label>
+                <label>Opacidade das abas/painéis (0.3–1)
+                    <input type="range" id="appearance-panel-opacity" min="0.3" max="1" step="0.05" value="1">
+                </label>
+                <label>Imagem de fundo (URL, GIF ok)
+                    <input type="url" id="appearance-bg-url" placeholder="https://...">
+                </label>
+                <label class="upload-label">
+                    <span class="upload-btn">Upload fundo</span>
+                    <input type="file" id="appearance-bg-file" accept="image/*" class="hidden">
+                </label>
+                <button type="button" class="btn-secondary" id="appearance-clear-bg">Remover fundo</button>
+            </div>
+
             <div class="modal-actions">
                 <button type="button" class="btn-secondary modal-cancel">Cancelar</button>
                 <button type="button" class="btn-primary" id="confirm-profile">Salvar</button>
@@ -496,6 +574,26 @@
                     <button type="button" class="btn-secondary" id="decline-invite-btn">Recusar</button>
                     <button type="button" class="btn-primary" id="confirm-join-invite">Aceitar convite</button>
                 </div>
+            </div>
+        </div>
+
+        <div class="modal hidden" id="modal-report">
+            <h2>Denunciar usuário</h2>
+            <p class="empty-hint">A denúncia é enviada para a moderação (Discord webhook).</p>
+            <label>Nick do denunciado
+                <input type="text" id="report-target-name" readonly>
+            </label>
+            <input type="hidden" id="report-target-uid" value="">
+            <label>Motivo / texto
+                <textarea id="report-text" rows="4" maxlength="1000" placeholder="Descreva o ocorrido..."></textarea>
+            </label>
+            <label class="upload-label">
+                <span class="upload-btn">Print / foto (opcional)</span>
+                <input type="file" id="report-image" accept="image/*" class="hidden">
+            </label>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary modal-cancel">Cancelar</button>
+                <button type="button" class="btn-primary" id="confirm-report">Enviar denúncia</button>
             </div>
         </div>
 
