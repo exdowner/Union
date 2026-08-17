@@ -15,7 +15,7 @@
         <div class="auth-card">
             <div class="auth-brand">
                 <div class="auth-logo">
-                    <img src="https://cdn.discordapp.com/attachments/1538717425946722316/1539029902039449633/241ae5b5-a685-4644-892f-5e9197249b95.jpg" alt="Union Chat" class="auth-logo-img">
+                    <img src="logo.png" alt="Union Chat" class="auth-logo-img">
                 </div>
                 <h1>Union Chat</h1>
                 <p>Seu espaço para conversar, criar comunidades e ficar conectado.</p>
@@ -345,8 +345,12 @@
                         <label>URL do símbolo
                             <input type="url" id="server-tag-url" placeholder="https://...">
                         </label>
-                        <button type="button" class="btn-primary" id="save-server-tag-btn">Salvar tag do servidor</button>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap">
+                            <button type="button" class="btn-primary" id="save-server-tag-btn">Salvar / atualizar tag</button>
+                            <button type="button" class="btn-secondary danger-btn" id="delete-server-tag-btn">Apagar tag</button>
+                        </div>
                         <div id="server-tag-preview" class="clan-tag-preview" style="margin-top:12px"></div>
+                        <p class="empty-hint">Só existe 1 tag por servidor. Membros escolhem ela no perfil.</p>
                     </div>
                     <div id="stab-members" class="settings-panel hidden">
                         <div id="members-list"></div>

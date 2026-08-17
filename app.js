@@ -84,6 +84,9 @@ function getCurrentDisplayName(withClan = false) {
     if (withClan && userProfile?.clanTag) return `${userProfile.clanTag} ${name}`;
     return name;
 }
+function getCurrentName() {
+    return safeName(userProfile?.displayName);
+}
 
 function getCurrentPhoto() {
     return userProfile?.photoURL || createDefaultAvatar(currentUser?.uid || "uc");
@@ -2366,7 +2369,7 @@ $("dm-form")?.addEventListener("submit", async (e) => {
     const id = dmIdFor(currentUser.uid, currentDmUid);
     const payload = {
         uid: currentUser.uid,
-        authorName: getCurrentName(),
+        authorName: getCurrentDisplayName(false),
         authorPhoto: getCurrentPhoto(),
         text,
         createdAt: serverTimestamp()
@@ -2451,7 +2454,7 @@ $("confirm-report")?.addEventListener("click", async () => {
             title: "🚨 Nova denúncia — Union Chat",
             color: 15158332,
             fields: [
-                { name: "Denunciante", value: `${getCurrentName()} (\`${currentUser.uid}\`)`, inline: false },
+                { name: "Denunciante", value: `${getCurrentDisplayName(false)} (\`${currentUser.uid}\`)`, inline: false },
                 { name: "Denunciado", value: `${targetName} (\`${targetUid}\`)`, inline: false },
                 { name: "Motivo", value: reason.slice(0, 1000), inline: false },
                 { name: "Prova / imagem", value: imageUrl ? String(imageUrl).slice(0, 1000) : "Nenhuma", inline: false }
@@ -2466,7 +2469,7 @@ $("confirm-report")?.addEventListener("click", async () => {
         // salva também no RTDB
         await safePush("reports", {
             from: currentUser.uid,
-            fromName: getCurrentName(),
+            fromName: getCurrentDisplayName(false),
             target: targetUid,
             targetName,
             reason,
@@ -2639,11 +2642,29 @@ $("save-server-tag-btn")?.addEventListener("click", async () => {
         if (file) {
             iconURL = file.type === "image/gif" ? await fileToDataURL(file) : await convertImage(file, { maxWidth: 64, maxHeight: 64, quality: 0.9 });
         }
+        // 1 tag por servidor (sobrescreve a anterior)
         const serverTag = { text: textVal, iconURL: iconURL || null };
         await safeUpdate(`servers/${currentServerId}`, { serverTag });
         if (serverCache[currentServerId]) serverCache[currentServerId].serverTag = serverTag;
         renderServerTagPreview(serverTag);
-        toast("Tag do servidor salva!");
+        toast("Tag do servidor salva (1 por servidor)!");
+    } catch (e) {
+        toast("Erro: " + e.message);
+    }
+});
+
+$("delete-server-tag-btn")?.addEventListener("click", async () => {
+    if (!currentServerId || !currentUser) return;
+    const can = await userHasAdminPower(currentServerId, currentUser.uid);
+    if (!can) return toast("Sem permissão.");
+    if (!confirm("Apagar a tag deste servidor?")) return;
+    try {
+        await safeUpdate(`servers/${currentServerId}`, { serverTag: null });
+        if (serverCache[currentServerId]) serverCache[currentServerId].serverTag = null;
+        if (exists("server-tag-text")) $("server-tag-text").value = "";
+        if (exists("server-tag-url")) $("server-tag-url").value = "";
+        renderServerTagPreview(null);
+        toast("Tag apagada.");
     } catch (e) {
         toast("Erro: " + e.message);
     }
