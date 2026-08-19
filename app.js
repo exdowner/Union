@@ -1154,8 +1154,10 @@ $("confirm-server-emoji-url")?.addEventListener("click", async () => {
 
 // Render :nome: nos textos de mensagem
 function renderCustomEmojis(text, emojiMap) {
-    if (!text || !emojiMap) return escapeHTML(text || "");
-    let out = escapeHTML(text);
+    if (!text) return "";
+    // se já veio com HTML (markdown), não escapa de novo
+    let out = /[<>]/.test(text) ? text : escapeHTML(text);
+    if (!emojiMap) return out;
     out = out.replace(/:([a-z0-9_]{1,32}):/gi, (m, name) => {
         const em = emojiMap[name.toLowerCase()];
         if (!em) return m;
@@ -1399,11 +1401,22 @@ function listenMessages() {
                 const time = normalizeTimestamp(msg.createdAt)
                     ? new Date(normalizeTimestamp(msg.createdAt)).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
                     : "";
-                let content = renderCustomEmojis(msg.text || "", serverEmojiCache);
+                let content = renderMarkdown(msg.text || "");
+                content = renderCustomEmojis(content, serverEmojiCache);
                 content = renderMentions(content);
+                if (msg.replyTo) {
+                    content = `<div class="msg-reply-ref">↩ ${escapeHTML(msg.replyTo.authorName || "")}: ${escapeHTML((msg.replyTo.text || "").slice(0, 80))}</div>` + content;
+                }
                 if (msg.image) content += `<div class="msg-image"><img src="${escapeAttribute(msg.image)}" alt="" loading="lazy"></div>`;
                 if (msg.sticker) content += `<div class="msg-sticker"><img src="${escapeAttribute(msg.sticker)}" alt="" loading="lazy"></div>`;
                 if (msg.audio) content += `<div class="msg-audio"><audio controls src="${escapeAttribute(msg.audio)}"></audio></div>`;
+                const reactions = msg.reactions || {};
+                const reactHtml = Object.entries(reactions).map(([emoji, uids]) => {
+                    const arr = Array.isArray(uids) ? uids : Object.keys(uids || {});
+                    const active = currentUser && arr.includes(currentUser.uid) ? " active" : "";
+                    return `<button type="button" class="msg-reaction${active}" data-react="${escapeAttribute(emoji)}" data-mid="${id}">${emoji} ${arr.length}</button>`;
+                }).join("");
+                const isMine = msg.uid === currentUser?.uid;
                 el.innerHTML = `
                     <img class="avatar avatar-sm" src="${escapeAttribute(photo)}" alt="" data-user-id="${escapeAttribute(msg.uid || "")}">
                     <div class="message-body">
@@ -1412,6 +1425,12 @@ function listenMessages() {
                             <span class="meta">${escapeHTML(time)}</span>
                         </div>
                         <div class="message-content">${content}</div>
+                        <div class="msg-reactions">${reactHtml}</div>
+                        <div class="msg-actions">
+                            <button type="button" title="Reagir" data-act="react" data-mid="${id}">😊</button>
+                            <button type="button" title="Responder" data-act="reply" data-mid="${id}" data-author="${escapeAttribute(msg.authorName || "")}" data-text="${escapeAttribute((msg.text || "").slice(0, 100))}">↩</button>
+                            ${isMine ? `<button type="button" title="Apagar" data-act="del" data-mid="${id}">🗑</button>` : ""}
+                        </div>
                     </div>`;
                 root.appendChild(el);
             });
@@ -1445,6 +1464,11 @@ $("message-form")?.addEventListener("submit", async (e) => {
             text,
             createdAt: serverTimestamp()
         };
+        if (window.__replyTo) {
+            payload.replyTo = window.__replyTo;
+            window.__replyTo = null;
+            $("reply-bar")?.classList.add("hidden");
+        }
         if (pendingFile) {
             payload.image = await convertImage(pendingFile, { maxWidth: 1280, maxHeight: 1280, quality: 0.8 });
             pendingFile = null;
@@ -2335,7 +2359,18 @@ async function openDm(uid) {
     currentDmUid = uid;
     const uSnap = await safeGet(`users/${uid}`);
     const u = uSnap.exists() ? uSnap.val() : {};
-    if (exists("dm-title")) $("dm-title").textContent = u.displayName || "DM";
+    const name = u.displayName || "DM";
+    const photo = u.photoURL || createDefaultAvatar(uid);
+    if (exists("dm-title")) $("dm-title").textContent = name;
+    if (exists("dm-header-avatar")) $("dm-header-avatar").src = photo;
+    if (exists("dm-intro")) {
+        $("dm-intro").innerHTML = `
+            <img src="${escapeAttribute(photo)}" alt="">
+            <h3>${escapeHTML(name)}</h3>
+            <p>@${escapeHTML((u.username || name).toLowerCase().replace(/\s+/g, "_"))}</p>
+            <p>Foi aqui que a sua conversa com ${escapeHTML(name)} começou.</p>
+        `;
+    }
     showView("dm");
     listenDm(uid);
 }
@@ -3082,6 +3117,227 @@ $("public-profile-dm")?.addEventListener("click", () => {
 $("public-profile-friend")?.addEventListener("click", async () => {
     const uid = $("modal-public-profile")?.dataset?.uid;
     if (uid) await sendFriendRequest(uid);
+});
+
+
+
+// =====================================================
+// MARKDOWN + MSG ACTIONS + CALL UI + LEAVE SERVER
+// =====================================================
+function renderMarkdown(text) {
+    if (!text) return "";
+    let s = escapeHTML(text);
+    // code `code`
+    s = s.replace(/`([^`]+)`/g, '<code class="md-code">$1</code>');
+    // bold **text**
+    s = s.replace(/\*\*([^*]+)\*\*/g, '<strong class="md-bold">$1</strong>');
+    // italic *text* or _text_
+    s = s.replace(/(^|[^*])\*([^*]+)\*(?!\*)/g, '$1<em class="md-italic">$2</em>');
+    s = s.replace(/(^|[^_])_([^_]+)_(?!_)/g, '$1<em class="md-italic">$2</em>');
+    // strike ~~text~~ or -text-
+    s = s.replace(/~~([^~]+)~~/g, '<span class="md-strike">$1</span>');
+    s = s.replace(/(^|[\s>])-([^-\n]+)-(?=$|[\s<])/g, '$1<span class="md-strike">$2</span>');
+    // underline __text__ (discord-ish)
+    s = s.replace(/__([^_]+)__/g, '<u>$1</u>');
+    return s;
+}
+
+// Event delegation for message actions
+document.addEventListener("click", async (e) => {
+    const btn = e.target.closest("[data-act]");
+    if (!btn) {
+        const r = e.target.closest("[data-react]");
+        if (r && currentServerId && currentChannelId) {
+            await toggleReaction(r.dataset.mid, r.dataset.react);
+        }
+        return;
+    }
+    const act = btn.dataset.act;
+    const mid = btn.dataset.mid;
+    if (!currentServerId || !currentChannelId || !mid) return;
+    if (act === "del") {
+        if (!confirm("Apagar esta mensagem?")) return;
+        try {
+            await remove(databaseRef(`messages/${currentServerId}/${currentChannelId}/${mid}`));
+            toast("Mensagem apagada.");
+        } catch (err) {
+            toast("Erro: " + err.message);
+        }
+    } else if (act === "reply") {
+        window.__replyTo = { id: mid, authorName: btn.dataset.author || "", text: btn.dataset.text || "" };
+        if (exists("reply-bar-text")) $("reply-bar-text").textContent = "Respondendo a " + (btn.dataset.author || "mensagem");
+        $("reply-bar")?.classList.remove("hidden");
+        $("message-input")?.focus();
+    } else if (act === "react") {
+        const emoji = prompt("Emoji para reagir:", "👍");
+        if (!emoji) return;
+        await toggleReaction(mid, emoji.trim().slice(0, 8));
+    }
+});
+
+async function toggleReaction(mid, emoji) {
+    if (!currentUser || !currentServerId || !currentChannelId) return;
+    try {
+        const path = `messages/${currentServerId}/${currentChannelId}/${mid}/reactions/${emoji}`;
+        const snap = await safeGet(path);
+        let list = [];
+        if (snap.exists()) {
+            const v = snap.val();
+            list = Array.isArray(v) ? v : Object.keys(v);
+        }
+        if (list.includes(currentUser.uid)) {
+            list = list.filter(u => u !== currentUser.uid);
+        } else {
+            list.push(currentUser.uid);
+        }
+        if (!list.length) await remove(databaseRef(path));
+        else await safeSet(path, list);
+    } catch (e) {
+        toast("Reação: " + e.message);
+    }
+}
+
+$("reply-bar-cancel")?.addEventListener("click", () => {
+    window.__replyTo = null;
+    $("reply-bar")?.classList.add("hidden");
+});
+
+// Leave server
+$("leave-server-btn")?.addEventListener("click", async () => {
+    if (!currentServerId || !currentUser) return;
+    const server = serverCache[currentServerId];
+    if (server?.ownerId === currentUser.uid) {
+        return toast("Dono não pode sair. Transfira a posse ou exclua o servidor.");
+    }
+    if (!confirm("Sair deste servidor?")) return;
+    const sid = currentServerId;
+    try {
+        await remove(databaseRef(`serverMembers/${sid}/${currentUser.uid}`));
+        await remove(databaseRef(`userServers/${currentUser.uid}/${sid}`));
+        delete serverCache[sid];
+        currentServerId = null;
+        toast("Você saiu do servidor.");
+        $("home-pill")?.click();
+        renderServerList();
+    } catch (e) {
+        toast("Erro: " + e.message);
+    }
+});
+
+// Call overlay UI
+let callLocalStream = null;
+let callScreenStream = null;
+
+async function openCallOverlay({ peerName, peerPhoto, withCam = false }) {
+    const ov = $("call-overlay");
+    if (!ov) return;
+    if (exists("call-peer-name")) $("call-peer-name").textContent = peerName || "Chamada";
+    if (exists("call-peer-avatar")) $("call-peer-avatar").src = peerPhoto || createDefaultAvatar("peer");
+    if (exists("call-self-name")) $("call-self-name").textContent = getCurrentDisplayName();
+    if (exists("call-self-avatar")) $("call-self-avatar").src = getCurrentPhoto();
+    ov.classList.remove("hidden");
+    try {
+        callLocalStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: withCam });
+        const v = $("call-local-video");
+        if (v && withCam) {
+            v.srcObject = callLocalStream;
+            v.classList.remove("hidden");
+        }
+    } catch (e) {
+        toast("Mídia: " + e.message);
+    }
+}
+
+function closeCallOverlay() {
+    $("call-overlay")?.classList.add("hidden");
+    if (callLocalStream) {
+        callLocalStream.getTracks().forEach(t => t.stop());
+        callLocalStream = null;
+    }
+    if (callScreenStream) {
+        callScreenStream.getTracks().forEach(t => t.stop());
+        callScreenStream = null;
+    }
+    const v = $("call-local-video");
+    if (v) { v.srcObject = null; v.classList.add("hidden"); }
+    const s = $("call-screen-video");
+    if (s) { s.srcObject = null; s.classList.add("hidden"); }
+}
+
+$("call-hangup-btn")?.addEventListener("click", closeCallOverlay);
+
+$("call-mute-btn")?.addEventListener("click", () => {
+    if (!callLocalStream) return;
+    callLocalStream.getAudioTracks().forEach(t => { t.enabled = !t.enabled; });
+    toast(callLocalStream.getAudioTracks()[0]?.enabled ? "Microfone on" : "Microfone off");
+});
+
+$("call-cam-btn")?.addEventListener("click", async () => {
+    try {
+        if (callLocalStream?.getVideoTracks().some(t => t.enabled && t.readyState === "live")) {
+            callLocalStream.getVideoTracks().forEach(t => t.stop());
+            const v = $("call-local-video");
+            if (v) { v.srcObject = null; v.classList.add("hidden"); }
+            toast("Câmera off");
+            return;
+        }
+        const cam = await navigator.mediaDevices.getUserMedia({ video: true });
+        if (!callLocalStream) callLocalStream = cam;
+        else {
+            cam.getVideoTracks().forEach(t => callLocalStream.addTrack(t));
+        }
+        const v = $("call-local-video");
+        if (v) {
+            v.srcObject = callLocalStream;
+            v.classList.remove("hidden");
+        }
+        toast("Câmera on");
+    } catch (e) {
+        toast("Câmera: " + e.message);
+    }
+});
+
+$("call-share-btn")?.addEventListener("click", async () => {
+    try {
+        const q = parseInt($("call-screen-quality")?.value || "1080", 10);
+        callScreenStream = await navigator.mediaDevices.getDisplayMedia({
+            video: { width: { ideal: q === 720 ? 1280 : q === 1440 ? 2560 : 1920 }, height: { ideal: q } },
+            audio: false
+        });
+        const s = $("call-screen-video");
+        if (s) {
+            s.srcObject = callScreenStream;
+            s.classList.remove("hidden");
+        }
+        callScreenStream.getVideoTracks()[0].onended = () => {
+            if (s) { s.srcObject = null; s.classList.add("hidden"); }
+            callScreenStream = null;
+        };
+        toast("Compartilhando tela (" + q + "p)");
+    } catch (e) {
+        toast("Tela: " + (e.message || "cancelado"));
+    }
+});
+
+// Wire DM call buttons to overlay
+$("dm-voice-call-btn")?.addEventListener("click", async () => {
+    const name = $("dm-title")?.textContent || "DM";
+    const photo = $("dm-header-avatar")?.src || "";
+    await openCallOverlay({ peerName: name, peerPhoto: photo, withCam: false });
+});
+$("dm-video-call-btn")?.addEventListener("click", async () => {
+    const name = $("dm-title")?.textContent || "DM";
+    const photo = $("dm-header-avatar")?.src || "";
+    await openCallOverlay({ peerName: name, peerPhoto: photo, withCam: true });
+});
+
+// Fix share-screen on server voice - always show when in call
+$("join-voice-btn")?.addEventListener("click", () => {
+    setTimeout(() => {
+        $("share-screen-btn")?.classList.remove("hidden");
+        $("screen-quality")?.classList.remove("hidden");
+        $("toggle-cam-btn")?.classList.remove("hidden");
+    }, 500);
 });
 
 

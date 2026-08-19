@@ -119,6 +119,10 @@
             <!-- CHAT -->
             <section id="view-text" class="view">
                 <div class="messages" id="messages"></div>
+                <div id="reply-bar" class="reply-bar hidden">
+                    <span id="reply-bar-text">Respondendo...</span>
+                    <button type="button" id="reply-bar-cancel" class="icon-btn" title="Cancelar">×</button>
+                </div>
                 <div id="attach-preview" class="attach-preview hidden"></div>
                 <form id="message-form" class="message-form">
                     <button type="button" id="attach-btn" class="icon-btn" title="Anexar imagem">
@@ -222,23 +226,30 @@
 
             <!-- DM -->
             <section id="view-dm" class="view hidden">
-                <header class="main-header" style="position:relative">
+                <header class="main-header dm-header">
                     <button type="button" id="back-from-dm" class="icon-btn" title="Voltar">
                         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
                     </button>
-                    <span id="dm-title">DM</span>
+                    <div class="dm-header-user">
+                        <img id="dm-header-avatar" class="avatar avatar-sm" src="" alt="">
+                        <span id="dm-title">DM</span>
+                    </div>
                     <div class="main-header-actions">
+                        <button type="button" id="dm-voice-call-btn" class="icon-btn" title="Call de voz">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                        </button>
+                        <button type="button" id="dm-video-call-btn" class="icon-btn" title="Call com câmera">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+                        </button>
                         <button type="button" id="dm-remove-friend-btn" class="icon-btn" title="Remover amizade">
                             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" y1="8" x2="22" y2="13"/><line x1="22" y1="8" x2="17" y2="13"/></svg>
                         </button>
                         <button type="button" id="dm-block-btn" class="icon-btn" title="Bloquear">
                             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
                         </button>
-                        <button type="button" id="dm-report-btn" class="icon-btn" title="Denunciar">
-                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
-                        </button>
                     </div>
                 </header>
+                <div class="dm-intro" id="dm-intro"></div>
                 <div class="messages" id="dm-messages"></div>
                 <form id="dm-form" class="message-form">
                     <button type="button" id="dm-attach-btn" class="icon-btn" title="Anexar">
@@ -334,6 +345,7 @@
                         </label>
                         <label class="perm-check"><input type="checkbox" id="server-nsfw-edit"> Servidor NSFW / 18+</label>
                         <button type="button" class="btn-primary" id="save-server-overview">Salvar</button>
+                        <button type="button" class="btn-secondary" id="leave-server-btn">Sair do servidor</button>
                         <button type="button" class="btn-secondary danger-btn hidden" id="delete-server-btn">Excluir servidor (somente dono)</button>
                         <p id="server-settings-hint" class="empty-hint" style="margin-top:8px"></p>
                     </div>
@@ -709,6 +721,40 @@
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
             <span id="notif-count" class="notif-badge hidden">0</span>
         </button>
+    </div>
+    <!-- CALL OVERLAY (DM / voz) -->
+    <div id="call-overlay" class="call-overlay hidden">
+        <div class="call-stage">
+            <div class="call-peer">
+                <img id="call-peer-avatar" class="call-avatar" src="" alt="">
+                <span id="call-peer-name">—</span>
+            </div>
+            <div class="call-self">
+                <img id="call-self-avatar" class="call-avatar call-avatar-sm" src="" alt="">
+                <span id="call-self-name">Você</span>
+            </div>
+        </div>
+        <div class="call-controls">
+            <button type="button" id="call-mute-btn" class="call-ctrl" title="Mudo">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+            </button>
+            <button type="button" id="call-cam-btn" class="call-ctrl" title="Câmera">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+            </button>
+            <button type="button" id="call-share-btn" class="call-ctrl" title="Compartilhar tela">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+            </button>
+            <button type="button" id="call-hangup-btn" class="call-ctrl call-hangup" title="Desligar">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.68 13.31a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 24 20.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 5.11 4h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L9.09 11.91"/></svg>
+            </button>
+        </div>
+        <select id="call-screen-quality" class="call-quality">
+            <option value="720">720p</option>
+            <option value="1080" selected>1080p</option>
+            <option value="1440">1440p</option>
+        </select>
+        <video id="call-local-video" class="call-local-video hidden" autoplay playsinline muted></video>
+        <video id="call-screen-video" class="call-screen-video hidden" autoplay playsinline muted></video>
     </div>
     <div id="toast" class="toast hidden"></div>
 

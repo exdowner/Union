@@ -1190,3 +1190,225 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); }
   display: block;
   object-fit: cover;
 }
+
+/* DM header Discord-like */
+.dm-header { gap: 10px; }
+.dm-header-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+.dm-header-user span {
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dm-intro {
+  padding: 20px 16px 8px;
+  text-align: center;
+  color: var(--text-1);
+  font-size: 13px;
+}
+.dm-intro img {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  object-fit: cover;
+  margin: 0 auto 12px;
+  display: block;
+}
+.dm-intro h3 {
+  margin: 0 0 4px;
+  font-size: 22px;
+  color: var(--text-0);
+  font-family: var(--font-display);
+}
+
+/* Call overlay full screen */
+.call-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  background: #0b0c0e;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 48px 16px 32px;
+}
+.call-overlay.hidden { display: none !important; }
+.call-stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  width: 100%;
+}
+.call-peer, .call-self {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.call-avatar {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid #333;
+  background: #1a1a1a;
+}
+.call-avatar-sm {
+  width: 72px;
+  height: 72px;
+}
+.call-peer span, .call-self span {
+  color: #eee;
+  font-weight: 600;
+  font-size: 15px;
+}
+.call-controls {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.call-ctrl {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #2b2d31;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+}
+.call-ctrl:active { transform: scale(.96); }
+.call-hangup {
+  background: #ed4245;
+}
+.call-quality {
+  margin-top: 8px;
+  background: #1e1f22;
+  color: #ccc;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+.call-local-video, .call-screen-video {
+  position: absolute;
+  bottom: 120px;
+  right: 16px;
+  width: 120px;
+  max-height: 160px;
+  border-radius: 12px;
+  background: #000;
+  border: 1px solid #444;
+  object-fit: cover;
+}
+.call-screen-video {
+  left: 16px;
+  right: auto;
+  width: 160px;
+}
+
+/* Message actions */
+.message {
+  position: relative;
+}
+.message:hover .msg-actions,
+.message:focus-within .msg-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+.msg-actions {
+  position: absolute;
+  top: -12px;
+  right: 8px;
+  display: flex;
+  gap: 2px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 2px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+.msg-actions button {
+  width: 28px;
+  height: 28px;
+  font-size: 13px;
+  border-radius: 6px;
+  color: var(--text-1);
+}
+.msg-actions button:hover {
+  background: var(--bg-3);
+  color: var(--text-0);
+}
+.msg-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.msg-reaction {
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.msg-reaction.active {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+.reply-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-2);
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--text-1);
+}
+.reply-bar.hidden { display: none; }
+.msg-reply-ref {
+  font-size: 12px;
+  color: var(--text-2);
+  border-left: 2px solid var(--accent);
+  padding-left: 8px;
+  margin-bottom: 4px;
+}
+.md-bold { font-weight: 700; }
+.md-italic { font-style: italic; }
+.md-strike { text-decoration: line-through; }
+.md-code {
+  font-family: var(--font-mono);
+  background: var(--bg-3);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+@media (max-width: 768px) {
+  .msg-actions {
+    opacity: 1;
+    pointer-events: auto;
+    position: static;
+    margin-top: 6px;
+    width: fit-content;
+  }
+  .call-avatar { width: 100px; height: 100px; }
+}
