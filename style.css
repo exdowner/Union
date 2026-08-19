@@ -1412,3 +1412,48 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); }
   }
   .call-avatar { width: 100px; height: 100px; }
 }
+
+/* Long-press message sheet */
+.msg-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 160;
+  background: rgba(0,0,0,.55);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.msg-sheet.hidden { display: none !important; }
+.msg-sheet-panel {
+  width: 100%;
+  max-width: 420px;
+  background: var(--bg-1);
+  border-radius: 16px 16px 0 0;
+  border: 1px solid var(--line);
+  padding: 8px;
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+}
+.msg-sheet-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  color: var(--text-0);
+  font-size: 15px;
+  font-weight: 500;
+  background: transparent;
+  border: none;
+  text-align: left;
+}
+.msg-sheet-btn:hover, .msg-sheet-btn:active {
+  background: var(--bg-2);
+}
+.msg-sheet-btn.danger { color: var(--danger); }
+.msg-sheet-btn svg { flex-shrink: 0; opacity: .9; }
+.message.pressed {
+  background: var(--bg-2);
+}
+/* hide old inline actions */
+.msg-actions { display: none !important; }

@@ -1426,12 +1426,13 @@ function listenMessages() {
                         </div>
                         <div class="message-content">${content}</div>
                         <div class="msg-reactions">${reactHtml}</div>
-                        <div class="msg-actions">
-                            <button type="button" title="Reagir" data-act="react" data-mid="${id}">😊</button>
-                            <button type="button" title="Responder" data-act="reply" data-mid="${id}" data-author="${escapeAttribute(msg.authorName || "")}" data-text="${escapeAttribute((msg.text || "").slice(0, 100))}">↩</button>
-                            ${isMine ? `<button type="button" title="Apagar" data-act="del" data-mid="${id}">🗑</button>` : ""}
-                        </div>
                     </div>`;
+                el.dataset.mid = id;
+                el.dataset.author = msg.authorName || "";
+                el.dataset.text = (msg.text || "").slice(0, 100);
+                el.dataset.mine = isMine ? "1" : "0";
+                el.dataset.uid = msg.uid || "";
+
                 root.appendChild(el);
             });
         root.scrollTop = root.scrollHeight;
@@ -2645,7 +2646,7 @@ $("appearance-bg-color")?.addEventListener("input", (e) => {
 // Screen share
 $("share-screen-btn")?.addEventListener("click", async () => {
     try {
-        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+        const stream = await startScreenShare(1080);
         toast("Compartilhamento de tela iniciado (navegador).");
         // anexa preview local
         const grid = $("video-grid");
@@ -3085,10 +3086,7 @@ $("dm-video-call-btn")?.addEventListener("click", async () => {
 $("share-screen-btn")?.addEventListener("click", async () => {
     try {
         const q = parseInt($("screen-quality")?.value || "1080", 10);
-        const stream = await navigator.mediaDevices.getDisplayMedia({
-            video: { width: { ideal: q === 1440 ? 2560 : q === 720 ? 1280 : 1920 }, height: { ideal: q } },
-            audio: false
-        });
+        const stream = await startScreenShare(q);
         $("screen-quality")?.classList.remove("hidden");
         const grid = $("video-grid");
         if (grid) {
@@ -3100,10 +3098,12 @@ $("share-screen-btn")?.addEventListener("click", async () => {
                 tile.innerHTML = `<video autoplay playsinline muted></video><div class="video-tile-label">Sua tela (${q}p)</div>`;
                 grid.appendChild(tile);
             }
+            const lab = tile.querySelector(".video-tile-label");
+            if (lab) lab.textContent = "Sua tela (" + q + "p)";
             tile.querySelector("video").srcObject = stream;
             stream.getVideoTracks()[0].onended = () => { tile.remove(); toast("Tela encerrada."); };
         }
-        toast("Compartilhando tela (" + q + "p). Escolha tela ou janela no navegador.");
+        toast("Compartilhando tela (" + q + "p).");
     } catch (e) {
         toast("Compartilhar: " + (e.message || "cancelado"));
     }
@@ -3300,10 +3300,7 @@ $("call-cam-btn")?.addEventListener("click", async () => {
 $("call-share-btn")?.addEventListener("click", async () => {
     try {
         const q = parseInt($("call-screen-quality")?.value || "1080", 10);
-        callScreenStream = await navigator.mediaDevices.getDisplayMedia({
-            video: { width: { ideal: q === 720 ? 1280 : q === 1440 ? 2560 : 1920 }, height: { ideal: q } },
-            audio: false
-        });
+        callScreenStream = await startScreenShare(q);
         const s = $("call-screen-video");
         if (s) {
             s.srcObject = callScreenStream;
@@ -3339,6 +3336,119 @@ $("join-voice-btn")?.addEventListener("click", () => {
         $("toggle-cam-btn")?.classList.remove("hidden");
     }, 500);
 });
+
+
+
+function canShareScreen() {
+    try {
+        const md = navigator.mediaDevices;
+        return !!(md && typeof md.getDisplayMedia === "function");
+    } catch {
+        return false;
+    }
+}
+
+async function startScreenShare(quality = 1080) {
+    if (!canShareScreen()) {
+        throw new Error("Seu navegador/dispositivo não suporta compartilhar tela (comum no celular). Use Chrome/Edge no computador com HTTPS.");
+    }
+    const q = parseInt(quality, 10) || 1080;
+    return navigator.mediaDevices.getDisplayMedia({
+        video: {
+            width: { ideal: q === 720 ? 1280 : q === 1440 ? 2560 : 1920 },
+            height: { ideal: q }
+        },
+        audio: false
+    });
+}
+
+
+
+// Long-press / right-click message menu
+let __sheetMsg = null;
+function openMsgSheet(el) {
+    if (!el || !el.dataset.mid) return;
+    __sheetMsg = {
+        mid: el.dataset.mid,
+        author: el.dataset.author || "",
+        text: el.dataset.text || "",
+        mine: el.dataset.mine === "1"
+    };
+    const del = $("sheet-delete");
+    if (del) del.style.display = __sheetMsg.mine ? "" : "none";
+    $("msg-action-sheet")?.classList.remove("hidden");
+}
+function closeMsgSheet() {
+    $("msg-action-sheet")?.classList.add("hidden");
+    __sheetMsg = null;
+}
+$("sheet-cancel")?.addEventListener("click", closeMsgSheet);
+$("msg-action-sheet")?.addEventListener("click", (e) => {
+    if (e.target.id === "msg-action-sheet") closeMsgSheet();
+});
+$("sheet-reply")?.addEventListener("click", () => {
+    if (!__sheetMsg) return;
+    window.__replyTo = { id: __sheetMsg.mid, authorName: __sheetMsg.author, text: __sheetMsg.text };
+    if (exists("reply-bar-text")) $("reply-bar-text").textContent = "Respondendo a " + (__sheetMsg.author || "mensagem");
+    $("reply-bar")?.classList.remove("hidden");
+    $("message-input")?.focus();
+    closeMsgSheet();
+});
+$("sheet-delete")?.addEventListener("click", async () => {
+    if (!__sheetMsg?.mine || !currentServerId || !currentChannelId) return closeMsgSheet();
+    if (!confirm("Apagar esta mensagem?")) return;
+    try {
+        await remove(databaseRef(`messages/${currentServerId}/${currentChannelId}/${__sheetMsg.mid}`));
+        toast("Mensagem apagada.");
+    } catch (e) {
+        toast("Erro: " + e.message);
+    }
+    closeMsgSheet();
+});
+$("sheet-react")?.addEventListener("click", async () => {
+    if (!__sheetMsg) return;
+    const emoji = prompt("Emoji:", "👍");
+    if (emoji) await toggleReaction(__sheetMsg.mid, emoji.trim().slice(0, 8));
+    closeMsgSheet();
+});
+
+(function bindMsgLongPress() {
+    let timer = null;
+    let target = null;
+    const start = (e) => {
+        const msg = e.target.closest(".message");
+        if (!msg || !msg.dataset.mid) return;
+        // ignore buttons/links/media click short
+        if (e.target.closest("button, a, audio, video, input")) return;
+        target = msg;
+        msg.classList.add("pressed");
+        timer = setTimeout(() => {
+            openMsgSheet(msg);
+            timer = null;
+        }, 480);
+    };
+    const clear = () => {
+        if (timer) clearTimeout(timer);
+        timer = null;
+        document.querySelectorAll(".message.pressed").forEach(m => m.classList.remove("pressed"));
+        target = null;
+    };
+    document.addEventListener("touchstart", start, { passive: true });
+    document.addEventListener("touchend", clear);
+    document.addEventListener("touchmove", clear);
+    document.addEventListener("touchcancel", clear);
+    document.addEventListener("mousedown", start);
+    document.addEventListener("mouseup", clear);
+    document.addEventListener("mouseleave", clear);
+    // desktop right click
+    document.addEventListener("contextmenu", (e) => {
+        const msg = e.target.closest(".message");
+        if (msg && msg.dataset.mid) {
+            e.preventDefault();
+            openMsgSheet(msg);
+        }
+    });
+})();
 
 
 (function init() {
