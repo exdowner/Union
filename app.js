@@ -272,6 +272,7 @@ window.addEventListener("devcord:signed-in", async (e) => {
         setPresence(getCurrentPresence());
         applyTheme(localStorage.getItem("uc-theme") || "dark");
         checkInviteFromURL();
+        try { listenNotifications(); } catch {}
     } catch (err) {
         console.error(err);
         toast("Erro ao carregar conta.");
@@ -1399,6 +1400,7 @@ function listenMessages() {
                     ? new Date(normalizeTimestamp(msg.createdAt)).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
                     : "";
                 let content = renderCustomEmojis(msg.text || "", serverEmojiCache);
+                content = renderMentions(content);
                 if (msg.image) content += `<div class="msg-image"><img src="${escapeAttribute(msg.image)}" alt="" loading="lazy"></div>`;
                 if (msg.sticker) content += `<div class="msg-sticker"><img src="${escapeAttribute(msg.sticker)}" alt="" loading="lazy"></div>`;
                 if (msg.audio) content += `<div class="msg-audio"><audio controls src="${escapeAttribute(msg.audio)}"></audio></div>`;
@@ -1455,6 +1457,7 @@ $("message-form")?.addEventListener("submit", async (e) => {
             pendingAudio = null;
         }
         await safePush(`messages/${currentServerId}/${currentChannelId}`, payload);
+            try { await pushNotificationsForMessage(payload.text || "", currentServerId, currentChannelId); } catch {}
         if (input) input.value = "";
     } catch (err) {
         console.error(err);
@@ -1568,7 +1571,7 @@ function renderEmojiGrid() {
             btn.type = "button";
             btn.textContent = em;
             btn.addEventListener("click", () => {
-                const input = $("message-input");
+                const input = $(window.__msgTargetInput || "message-input") || $("message-input");
                 if (input) {
                     input.value += em;
                     input.focus();
@@ -1601,7 +1604,7 @@ async function renderServerEmojiPicker() {
         btn.title = `:${em.name}:`;
         btn.innerHTML = `<img src="${escapeAttribute(em.url)}" alt=":${escapeAttribute(em.name)}:" style="width:28px;height:28px;object-fit:contain">`;
         btn.addEventListener("click", () => {
-            const input = $("message-input");
+            const input = $(window.__msgTargetInput || "message-input") || $("message-input");
             if (input) {
                 input.value += `:${em.name}:`;
                 input.focus();
@@ -1893,6 +1896,11 @@ function loadProfileFields() {
     if (!userProfile) userProfile = {};
     if (exists("profile-avatar-preview")) $("profile-avatar-preview").src = getCurrentPhoto();
     if (exists("profile-name-input")) $("profile-name-input").value = userProfile.displayName || "";
+    if (exists("profile-username-input")) {
+        $("profile-username-input").value = userProfile.username || "";
+        $("profile-username-input").disabled = !canChangeUsername();
+        usernameCooldownHint();
+    }
     if (exists("profile-bio-input")) $("profile-bio-input").value = userProfile.bio || "";
     if (exists("profile-color-input")) $("profile-color-input").value = userProfile.accentColor || "#5ee6c4";
     if (exists("profile-font-input")) $("profile-font-input").value = userProfile.nameFont || "Inter";
@@ -1997,6 +2005,20 @@ $("confirm-profile")?.addEventListener("click", async () => {
     const bgUrl = bgFromFile || normalizeURL(($("appearance-bg-url")?.value || "").trim()) || "";
     const updates = {
         displayName: ($("profile-name-input")?.value || "").trim().slice(0, 32) || "Usuário",
+        username: (function(){
+            const raw = ($("profile-username-input")?.value || "").trim().toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 32);
+            if (!raw) return userProfile?.username || "";
+            if (raw !== (userProfile?.username || "") && !canChangeUsername()) {
+                toast("Username só pode mudar a cada 14 dias.");
+                return userProfile?.username || raw;
+            }
+            return raw || userProfile?.username || "";
+        })(),
+        usernameChangedAt: (function(){
+            const raw = ($("profile-username-input")?.value || "").trim().toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 32);
+            if (raw && raw !== (userProfile?.username || "") && canChangeUsername()) return Date.now();
+            return userProfile?.usernameChangedAt || null;
+        })(),
         bio: ($("profile-bio-input")?.value || "").trim().slice(0, 190),
         accentColor: $("profile-color-input")?.value || "#5ee6c4",
         nameFont: $("profile-font-input")?.value || "Inter",
@@ -2074,6 +2096,7 @@ $("confirm-profile")?.addEventListener("click", async () => {
 // =====================================================
 function renderPublicProfile(profile, uid) {
     if (!exists("modal-public-profile")) return;
+    $("modal-public-profile").dataset.uid = uid;
     const d = profile || {};
     if (exists("public-profile-banner")) {
         $("public-profile-banner").style.backgroundImage = d.bannerURL ? `url("${escapeAttribute(d.bannerURL)}")` : "";
@@ -2082,9 +2105,12 @@ function renderPublicProfile(profile, uid) {
         $("public-profile-avatar").src = d.photoURL || createDefaultAvatar(uid);
     }
     if (exists("public-profile-name")) {
-        $("public-profile-name").textContent = safeName(d.displayName);
+        $("public-profile-name").innerHTML = escapeHTML(safeName(d.displayName)) + (typeof clanTagHTML === "function" ? clanTagHTML(d) : "");
         $("public-profile-name").style.color = d.accentColor || "#5ee6c4";
         $("public-profile-name").style.fontFamily = d.nameFont || "Inter";
+    }
+    if (exists("public-profile-username")) {
+        $("public-profile-username").textContent = "@" + (d.username || d.displayName || "user").toString().toLowerCase().replace(/\s+/g, "_");
     }
     if (exists("public-profile-status")) $("public-profile-status").textContent = d.customStatus || "Online";
     if (exists("public-profile-bio")) $("public-profile-bio").textContent = d.bio || "Sem biografia.";
@@ -2221,6 +2247,7 @@ let pendingDmFile = null;
 $("friends-btn")?.addEventListener("click", () => {
     showView("friends");
     loadFriendsList();
+    loadFriendRequests();
     if (exists("friends-search")) $("friends-search").value = "";
     if (exists("friends-results")) $("friends-results").innerHTML = "";
 });
@@ -2333,12 +2360,14 @@ function listenDm(uid) {
             .forEach(([, msg]) => {
                 const el = document.createElement("div");
                 el.className = "message";
-                let content = escapeHTML(msg.text || "");
+                let content = renderMentions(escapeHTML(msg.text || ""));
                 if (msg.image) content += `<div class="msg-image"><img src="${escapeAttribute(msg.image)}" alt=""></div>`;
+                if (msg.sticker) content += `<div class="msg-sticker"><img src="${escapeAttribute(msg.sticker)}" alt=""></div>`;
+                if (msg.audio) content += `<div class="msg-audio"><audio controls src="${escapeAttribute(msg.audio)}"></audio></div>`;
                 el.innerHTML = `
-                    <img class="avatar avatar-sm" src="${escapeAttribute(msg.authorPhoto || createDefaultAvatar(msg.uid))}" alt="">
+                    <img class="avatar avatar-sm" src="${escapeAttribute(msg.authorPhoto || createDefaultAvatar(msg.uid))}" alt="" data-user-id="${escapeAttribute(msg.uid || "")}">
                     <div class="message-body">
-                        <div class="message-header"><strong>${escapeHTML(msg.authorName || "User")}</strong></div>
+                        <div class="message-header"><strong data-user-id="${escapeAttribute(msg.uid || "")}">${escapeHTML(msg.authorName || "User")}</strong></div>
                         <div class="message-content">${content}</div>
                     </div>`;
                 root.appendChild(el);
@@ -2737,6 +2766,322 @@ $("crop-confirm")?.addEventListener("click", async () => {
     }
     cropCallback = null;
     closeModals();
+});
+
+
+
+// =====================================================
+// LIGHTBOX / MENÇÕES / USERNAME / FRIEND REQUESTS / DM MÍDIA
+// =====================================================
+function openLightbox(src) {
+    if (!src) return;
+    const box = $("modal-lightbox");
+    const img = $("lightbox-img");
+    if (!box || !img) return;
+    img.src = src;
+    box.classList.remove("hidden");
+}
+$("lightbox-close")?.addEventListener("click", () => $("modal-lightbox")?.classList.add("hidden"));
+$("modal-lightbox")?.addEventListener("click", (e) => {
+    if (e.target.id === "modal-lightbox" || e.target.id === "lightbox-close") {
+        $("modal-lightbox")?.classList.add("hidden");
+    }
+});
+
+// Clique em imagem/figurinha = lightbox (não perfil)
+document.addEventListener("click", (e) => {
+    const media = e.target.closest(".msg-image img, .msg-sticker img, .msg-emoji");
+    if (media && media.src) {
+        e.preventDefault();
+        e.stopPropagation();
+        openLightbox(media.src);
+        return;
+    }
+}, true);
+
+function renderMentions(html) {
+    if (!html) return html;
+    // already escaped or with img tags
+    html = html.replace(/@everyone\b/gi, '<span class="mention mention-everyone">@everyone</span>');
+    html = html.replace(/@([a-zA-Z0-9_]{2,32})\b/g, '<span class="mention">@$1</span>');
+    return html;
+}
+
+function extractMentions(text) {
+    const list = [];
+    if (/@everyone\b/i.test(text)) list.push("everyone");
+    const re = /@([a-zA-Z0-9_]{2,32})\b/g;
+    let m;
+    while ((m = re.exec(text))) list.push(m[1].toLowerCase());
+    return [...new Set(list)];
+}
+
+async function pushNotificationsForMessage(text, serverId, channelId) {
+    if (!currentUser || !text) return;
+    const mentions = extractMentions(text);
+    if (!mentions.length) return;
+    try {
+        const membersSnap = await safeGet(`serverMembers/${serverId}`);
+        if (!membersSnap.exists()) return;
+        const memberIds = Object.keys(membersSnap.val());
+        for (const uid of memberIds) {
+            if (uid === currentUser.uid) continue;
+            const uSnap = await safeGet(`users/${uid}`);
+            const u = uSnap.exists() ? uSnap.val() : {};
+            const uname = (u.username || u.displayName || "").toLowerCase().replace(/\s+/g, "_");
+            const hit = mentions.includes("everyone") || mentions.includes(uname);
+            if (!hit) continue;
+            await safePush(`notifications/${uid}`, {
+                type: "mention",
+                from: currentUser.uid,
+                fromName: getCurrentDisplayName(),
+                serverId,
+                channelId,
+                text: text.slice(0, 120),
+                read: false,
+                createdAt: serverTimestamp()
+            });
+        }
+    } catch (e) {
+        console.warn("notif", e);
+    }
+}
+
+let notifCount = 0;
+function updateNotifBadge(n) {
+    notifCount = n;
+    const b = $("notif-count");
+    if (!b) return;
+    if (n > 0) {
+        b.textContent = n > 99 ? "99+" : String(n);
+        b.classList.remove("hidden");
+    } else b.classList.add("hidden");
+}
+
+function listenNotifications() {
+    if (!currentUser) return;
+    const reference = databaseRef(`notifications/${currentUser.uid}`);
+    onValue(reference, (snap) => {
+        const all = snap.val() || {};
+        const unread = Object.values(all).filter(n => !n.read).length;
+        updateNotifBadge(unread);
+    });
+}
+
+// Username 14 days
+function canChangeUsername() {
+    const last = userProfile?.usernameChangedAt;
+    if (!last) return true;
+    const t = typeof last === "number" ? last : (last.seconds ? last.seconds * 1000 : Date.parse(last));
+    if (!t || Number.isNaN(t)) return true;
+    return Date.now() - t >= 14 * 24 * 60 * 60 * 1000;
+}
+function usernameCooldownHint() {
+    const el = $("username-cooldown-hint");
+    if (!el) return;
+    if (canChangeUsername()) {
+        el.textContent = "Você pode alterar o nome de usuário agora.";
+        return;
+    }
+    const last = userProfile?.usernameChangedAt;
+    const t = typeof last === "number" ? last : (last?.seconds ? last.seconds * 1000 : Date.parse(last));
+    const left = 14 * 24 * 60 * 60 * 1000 - (Date.now() - t);
+    const days = Math.ceil(left / (24 * 60 * 60 * 1000));
+    el.textContent = `Próxima troca de username em ~${days} dia(s).`;
+}
+
+// Friend requests (pending)
+async function sendFriendRequest(toUid) {
+    if (!currentUser || !toUid || toUid === currentUser.uid) return;
+    try {
+        // if already friends
+        const fr = await safeGet(`friends/${currentUser.uid}/${toUid}`);
+        if (fr.exists()) return toast("Já são amigos.");
+        await safeSet(`friendRequests/${toUid}/${currentUser.uid}`, {
+            from: currentUser.uid,
+            fromName: getCurrentDisplayName(),
+            fromPhoto: getCurrentPhoto(),
+            createdAt: serverTimestamp()
+        });
+        toast("Pedido de amizade enviado.");
+    } catch (e) {
+        toast("Erro: " + e.message);
+    }
+}
+
+async function loadFriendRequests() {
+    const box = $("friend-requests-list");
+    if (!box || !currentUser) return;
+    box.innerHTML = "";
+    try {
+        const snap = await safeGet(`friendRequests/${currentUser.uid}`);
+        if (!snap.exists()) {
+            box.innerHTML = "<p class='empty-hint'>Nenhum pedido.</p>";
+            return;
+        }
+        Object.entries(snap.val()).forEach(([fromUid, req]) => {
+            const card = document.createElement("div");
+            card.className = "discover-card";
+            card.innerHTML = `
+                <img class="discover-icon" src="${escapeAttribute(req.fromPhoto || createDefaultAvatar(fromUid))}" alt="">
+                <div class="discover-info"><strong>${escapeHTML(req.fromName || "User")}</strong><span class="meta">quer ser seu amigo</span></div>
+                <button type="button" class="btn-primary btn-sm" data-accept-fr="${fromUid}">Aceitar</button>
+                <button type="button" class="btn-secondary btn-sm" data-decline-fr="${fromUid}">Recusar</button>
+            `;
+            box.appendChild(card);
+        });
+        box.querySelectorAll("[data-accept-fr]").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                const uid = btn.dataset.acceptFr;
+                await safeSet(`friends/${currentUser.uid}/${uid}`, true);
+                await safeSet(`friends/${uid}/${currentUser.uid}`, true);
+                await remove(databaseRef(`friendRequests/${currentUser.uid}/${uid}`));
+                toast("Amizade aceita!");
+                loadFriendRequests();
+                loadFriendsList();
+            });
+        });
+        box.querySelectorAll("[data-decline-fr]").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                await remove(databaseRef(`friendRequests/${currentUser.uid}/${btn.dataset.declineFr}`));
+                loadFriendRequests();
+            });
+        });
+    } catch (e) {
+        box.innerHTML = `<p class='empty-hint'>${escapeHTML(e.message)}</p>`;
+    }
+}
+
+// Hook friends search to send request instead of direct add when private
+// Override data-add-friend handlers by delegating
+document.addEventListener("click", async (e) => {
+    const btn = e.target.closest("[data-add-friend]");
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    await sendFriendRequest(btn.dataset.addFriend);
+});
+
+// DM media: stickers via main sticker picker targeting dm-input
+$("dm-sticker-btn")?.addEventListener("click", () => {
+    window.__msgTargetInput = "dm-input";
+    $("sticker-picker")?.classList.toggle("hidden");
+    renderEmojiGrid();
+});
+$("sticker-btn")?.addEventListener("click", () => {
+    window.__msgTargetInput = "message-input";
+});
+
+// Patch emoji insert to use target input
+const _origRenderEmoji = typeof renderEmojiGrid === "function" ? renderEmojiGrid : null;
+
+// DM audio record
+let dmRecording = false;
+let dmMediaRecorder = null;
+let dmChunks = [];
+$("dm-record-btn")?.addEventListener("click", async () => {
+    if (dmRecording && dmMediaRecorder) {
+        dmMediaRecorder.stop();
+        dmRecording = false;
+        $("dm-record-btn")?.classList.remove("recording");
+        return;
+    }
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        dmChunks = [];
+        dmMediaRecorder = new MediaRecorder(stream);
+        dmMediaRecorder.ondataavailable = (ev) => { if (ev.data.size) dmChunks.push(ev.data); };
+        dmMediaRecorder.onstop = async () => {
+            stream.getTracks().forEach(t => t.stop());
+            const blob = new Blob(dmChunks, { type: "audio/webm" });
+            const reader = new FileReader();
+            reader.onload = async () => {
+                try {
+                    if (!currentDmUid || !currentUser) return;
+                    const id = dmIdFor(currentUser.uid, currentDmUid);
+                    await safePush(`dms/${id}/messages`, {
+                        uid: currentUser.uid,
+                        authorName: getCurrentDisplayName(),
+                        authorPhoto: getCurrentPhoto(),
+                        text: "",
+                        audio: reader.result,
+                        createdAt: serverTimestamp()
+                    });
+                    toast("Áudio enviado.");
+                } catch (e) { toast("Erro áudio: " + e.message); }
+            };
+            reader.readAsDataURL(blob);
+        };
+        dmMediaRecorder.start();
+        dmRecording = true;
+        $("dm-record-btn")?.classList.add("recording");
+        toast("Gravando... clique de novo para parar.");
+    } catch (e) {
+        toast("Microfone: " + e.message);
+    }
+});
+
+// DM voice/video call stubs (private)
+$("dm-voice-call-btn")?.addEventListener("click", () => {
+    toast("Call de voz privada: use um canal de voz ou WebRTC peer (em breve sinalização DM).");
+});
+$("dm-video-call-btn")?.addEventListener("click", async () => {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        toast("Câmera aberta (call privada local).");
+        // show local preview in a simple way
+        let v = document.getElementById("dm-local-preview");
+        if (!v) {
+            v = document.createElement("video");
+            v.id = "dm-local-preview";
+            v.autoplay = true;
+            v.muted = true;
+            v.playsInline = true;
+            v.style.cssText = "position:fixed;bottom:80px;right:16px;width:160px;border-radius:12px;z-index:60;border:1px solid #333";
+            document.body.appendChild(v);
+        }
+        v.srcObject = stream;
+    } catch (e) {
+        toast("Câmera: " + e.message);
+    }
+});
+
+// Screen share quality
+$("share-screen-btn")?.addEventListener("click", async () => {
+    try {
+        const q = parseInt($("screen-quality")?.value || "1080", 10);
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+            video: { width: { ideal: q === 1440 ? 2560 : q === 720 ? 1280 : 1920 }, height: { ideal: q } },
+            audio: false
+        });
+        $("screen-quality")?.classList.remove("hidden");
+        const grid = $("video-grid");
+        if (grid) {
+            let tile = document.getElementById("local-screen-tile");
+            if (!tile) {
+                tile = document.createElement("div");
+                tile.id = "local-screen-tile";
+                tile.className = "video-tile";
+                tile.innerHTML = `<video autoplay playsinline muted></video><div class="video-tile-label">Sua tela (${q}p)</div>`;
+                grid.appendChild(tile);
+            }
+            tile.querySelector("video").srcObject = stream;
+            stream.getVideoTracks()[0].onended = () => { tile.remove(); toast("Tela encerrada."); };
+        }
+        toast("Compartilhando tela (" + q + "p). Escolha tela ou janela no navegador.");
+    } catch (e) {
+        toast("Compartilhar: " + (e.message || "cancelado"));
+    }
+});
+
+// Public profile actions
+$("public-profile-dm")?.addEventListener("click", () => {
+    const uid = $("modal-public-profile")?.dataset?.uid;
+    if (uid) { closeModals(); openDm(uid); }
+});
+$("public-profile-friend")?.addEventListener("click", async () => {
+    const uid = $("modal-public-profile")?.dataset?.uid;
+    if (uid) await sendFriendRequest(uid);
 });
 
 

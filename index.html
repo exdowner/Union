@@ -53,7 +53,9 @@
     <!-- APP -->
     <div id="app" class="app hidden">
         <nav class="server-rail" id="server-rail">
-            <button type="button" class="server-pill server-pill-home active" id="home-pill" title="Início">UC</button>
+            <button type="button" class="server-pill server-pill-home active" id="home-pill" title="Início">
+                <img src="logo.png" alt="UC" class="home-logo-img">
+            </button>
             <div class="server-divider"></div>
             <div class="server-list" id="server-list"></div>
             <button type="button" class="server-pill server-pill-add" id="add-server-btn" title="Criar servidor">
@@ -129,7 +131,7 @@
                     <button type="button" id="record-btn" class="icon-btn" title="Gravar áudio">
                         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
                     </button>
-                    <input type="text" id="message-input" placeholder="Mandar mensagem..." autocomplete="off" maxlength="2000">
+                    <input type="text" id="message-input" placeholder="Mandar mensagem... use @nick ou @everyone" autocomplete="off" maxlength="2000">
                     <button type="submit" class="btn-primary btn-send">Enviar</button>
                 </form>
                 <div id="sticker-picker" class="sticker-picker hidden">
@@ -180,6 +182,11 @@
                         <button type="button" id="share-screen-btn" class="icon-btn hidden" title="Compartilhar tela">
                             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
                         </button>
+                        <select id="screen-quality" class="hidden" title="Qualidade" style="max-width:110px;padding:6px 8px;font-size:12px">
+                            <option value="720">720p</option>
+                            <option value="1080" selected>1080p</option>
+                            <option value="1440">1440p</option>
+                        </select>
                     </div>
                 </div>
             </section>
@@ -203,8 +210,11 @@
             <section id="view-friends" class="view hidden">
                 <div class="discover-wrap">
                     <h2>Amigos e jogadores</h2>
+                    <div id="notif-list-inline" class="discover-list" style="margin-bottom:12px"></div>
                     <input type="text" id="friends-search" placeholder="Buscar por nick..." autocomplete="off">
                     <div id="friends-results" class="discover-list"></div>
+                    <h3 style="margin-top:20px;font-family:var(--font-display)">Pedidos de amizade</h3>
+                    <div id="friend-requests-list" class="discover-list"></div>
                     <h3 style="margin-top:20px;font-family:var(--font-display)">Seus amigos</h3>
                     <div id="friends-list" class="discover-list"></div>
                 </div>
@@ -235,7 +245,19 @@
                         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
                     </button>
                     <input type="file" id="dm-file-input" accept="image/*" class="hidden">
-                    <input type="text" id="dm-input" placeholder="Mensagem privada..." maxlength="2000" autocomplete="off">
+                    <button type="button" id="dm-sticker-btn" class="icon-btn" title="Figurinhas e emojis">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+                    </button>
+                    <button type="button" id="dm-record-btn" class="icon-btn" title="Gravar áudio">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                    </button>
+                    <button type="button" id="dm-voice-call-btn" class="icon-btn" title="Call de voz">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                    </button>
+                    <button type="button" id="dm-video-call-btn" class="icon-btn" title="Call com câmera">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+                    </button>
+                    <input type="text" id="dm-input" placeholder="Mensagem privada... use @nick" maxlength="2000" autocomplete="off">
                     <button type="submit" class="btn-primary btn-send">Enviar</button>
                 </form>
             </section>
@@ -421,7 +443,11 @@
             <label>URL do banner
                 <input type="url" id="profile-banner-url-input" placeholder="https://...">
             </label>
-            <label>Nome de exibição
+            <label>Nome de usuário (fixo, troca a cada 14 dias)
+                <input type="text" id="profile-username-input" maxlength="32" placeholder="seu_user" pattern="[a-zA-Z0-9_]{3,32}">
+            </label>
+            <p id="username-cooldown-hint" class="empty-hint"></p>
+            <label>Nome de exibição (público, muda quando quiser)
                 <input type="text" id="profile-name-input" maxlength="32">
             </label>
             <label>Bio
@@ -552,10 +578,13 @@
             <div class="public-profile-banner" id="public-profile-banner"></div>
             <img id="public-profile-avatar" class="avatar avatar-lg" src="" alt="">
             <h2 id="public-profile-name">—</h2>
+            <p id="public-profile-username" class="public-username">@user</p>
             <p id="public-profile-status" class="public-status">Online</p>
             <p id="public-profile-bio" class="public-bio">Sem biografia.</p>
             <div id="public-profile-socials" class="public-socials"></div>
-            <div class="modal-actions">
+            <div class="modal-actions" style="flex-wrap:wrap">
+                <button type="button" class="btn-primary" id="public-profile-dm">Mensagem</button>
+                <button type="button" class="btn-secondary" id="public-profile-friend">Amizade</button>
                 <button type="button" class="btn-secondary modal-cancel">Fechar</button>
             </div>
         </div>
@@ -671,6 +700,16 @@
         </div>
     </div>
 
+    <div id="modal-lightbox" class="lightbox hidden">
+        <button type="button" id="lightbox-close" class="lightbox-close" aria-label="Fechar">&times;</button>
+        <img id="lightbox-img" src="" alt="">
+    </div>
+    <div id="notif-bell-wrap" class="notif-bell-wrap hidden">
+        <button type="button" id="notif-btn" class="icon-btn" title="Notificações">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span id="notif-count" class="notif-badge hidden">0</span>
+        </button>
+    </div>
     <div id="toast" class="toast hidden"></div>
 
     <script type="module" src="firebase-config.js"></script>
