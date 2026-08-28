@@ -111,49 +111,21 @@ export async function joinVoiceChannel({
 
 
     micOn = true;
-    camOn = true;
-
+    camOn = false; // câmera só quando o usuário ligar
 
     // ========================================================
-    // MICROFONE + CÂMERA
+    // MICROFONE (áudio). Câmera opcional depois.
     // ========================================================
 
     try {
-
-        localStream =
-            await navigator.mediaDevices.getUserMedia({
-                audio: true,
-                video: true
-            });
-
-    } catch (videoError) {
-
-        console.warn(
-            "Câmera indisponível. Tentando apenas microfone.",
-            videoError
-        );
-
-        try {
-
-            localStream =
-                await navigator.mediaDevices.getUserMedia({
-                    audio: true,
-                    video: false
-                });
-
-        } catch (audioError) {
-
-            console.error(
-                "Não foi possível acessar microfone/câmera.",
-                audioError
-            );
-
-            ctx = null;
-
-            throw new Error(
-                "Não foi possível acessar o microfone ou a câmera."
-            );
-        }
+        localStream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: false
+        });
+    } catch (audioError) {
+        console.error("Não foi possível acessar microfone.", audioError);
+        ctx = null;
+        throw new Error("Não foi possível acessar o microfone.");
     }
 
 
@@ -1156,6 +1128,14 @@ function closePeer(peerUid) {
 // ============================================================
 
 export function leaveVoiceChannel() {
+    try {
+        if (screenStream) {
+            screenStream.getTracks().forEach(t => { try { t.stop(); } catch {} });
+        }
+        screenStream = null;
+        cameraVideoTrack = null;
+    } catch {}
+
 
     if (!ctx) {
         return;
@@ -1377,3 +1357,174 @@ export function isCameraEnabled() {
 
     return camOn;
 }
+
+
+// ============================================================
+// COMPARTILHAMENTO DE TELA
+// ============================================================
+
+let screenStream = null;
+let cameraVideoTrack = null; // guarda track da câmera ao trocar por tela
+
+function canGetDisplayMedia() {
+    try {
+        const md = navigator.mediaDevices;
+        return !!(md && typeof md.getDisplayMedia === "function");
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Substitui a track de vídeo enviada aos peers (câmera ↔ tela).
+ */
+async function replaceVideoTrackForPeers(newTrack) {
+    const tasks = [];
+    Object.values(peers).forEach((peer) => {
+        const pc = peer?.pc;
+        if (!pc) return;
+        const sender = pc.getSenders().find(s => s.track && s.track.kind === "video");
+        if (sender) {
+            tasks.push(sender.replaceTrack(newTrack));
+        } else if (newTrack && localStream) {
+            try {
+                pc.addTrack(newTrack, localStream);
+            } catch (e) {
+                console.warn("addTrack video", e);
+            }
+        }
+    });
+    await Promise.allSettled(tasks);
+}
+
+/**
+ * Inicia compartilhamento de tela/janela.
+ * quality: 720 | 1080 | 1440
+ * Retorna o MediaStream da tela ou lança Error com mensagem amigável.
+ */
+export async function startScreenShare(quality = 1080) {
+    if (!ctx || !localStream) {
+        throw new Error("Entre na call antes de compartilhar a tela.");
+    }
+    if (!canGetDisplayMedia()) {
+        const isAndroid = /Android/i.test(navigator.userAgent || "");
+        const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent || "");
+        if (isAndroid || isIOS) {
+            throw new Error("Neste celular o navegador não permite compartilhar tela. No PC (Chrome/Edge) funciona. No APK dá para usar captura nativa (MediaProjection).");
+        }
+        throw new Error("Seu navegador não suporta compartilhar tela. Use Chrome ou Edge em HTTPS.");
+    }
+
+    // Para share anterior se houver
+    if (screenStream) {
+        try { await stopScreenShare(); } catch {}
+    }
+
+    const q = parseInt(quality, 10) || 1080;
+    screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+            width: { ideal: q === 720 ? 1280 : q === 1440 ? 2560 : 1920 },
+            height: { ideal: q },
+            frameRate: { ideal: 30 }
+        },
+        audio: false
+    });
+
+    const screenTrack = screenStream.getVideoTracks()[0];
+    if (!screenTrack) {
+        screenStream.getTracks().forEach(t => t.stop());
+        screenStream = null;
+        throw new Error("Não foi possível obter a track de vídeo da tela.");
+    }
+
+    // Guarda a track de câmera atual (se existir)
+    const currentCam = localStream.getVideoTracks()[0];
+    if (currentCam && currentCam !== screenTrack) {
+        cameraVideoTrack = currentCam;
+        // remove da localStream mas não stop ainda (podemos voltar)
+        localStream.removeTrack(currentCam);
+    }
+
+    localStream.addTrack(screenTrack);
+    await replaceVideoTrackForPeers(screenTrack);
+
+    // Atualiza tile local
+    addVideoTile(ctx.uid, `${ctx.displayName || "Você"} (tela)`, localStream, true);
+
+    screenTrack.onended = () => {
+        stopScreenShare().catch(() => {});
+    };
+
+    return screenStream;
+}
+
+export async function stopScreenShare() {
+    if (!screenStream && !cameraVideoTrack) return;
+
+    const screenTracks = screenStream ? screenStream.getVideoTracks() : [];
+    screenTracks.forEach(t => {
+        try { localStream?.removeTrack(t); } catch {}
+        try { t.stop(); } catch {}
+    });
+    if (screenStream) {
+        screenStream.getTracks().forEach(t => { try { t.stop(); } catch {} });
+    }
+    screenStream = null;
+
+    // Restaura câmera se estava ligada
+    if (cameraVideoTrack && cameraVideoTrack.readyState === "live") {
+        localStream?.addTrack(cameraVideoTrack);
+        await replaceVideoTrackForPeers(cameraVideoTrack);
+        cameraVideoTrack = null;
+        if (ctx) addVideoTile(ctx.uid, `${ctx.displayName || "Você"} (você)`, localStream, true);
+    } else {
+        cameraVideoTrack = null;
+        // sem vídeo: envia null ou deixa sem track
+        await replaceVideoTrackForPeers(null);
+        if (ctx) addVideoTile(ctx.uid, `${ctx.displayName || "Você"} (você)`, localStream, true);
+    }
+}
+
+export function isSharingScreen() {
+    return !!(screenStream && screenStream.getVideoTracks().some(t => t.readyState === "live"));
+}
+
+export async function enableCamera() {
+    if (!localStream || !ctx) throw new Error("Fora da call.");
+    if (isSharingScreen()) throw new Error("Pare o compartilhamento de tela antes de ligar a câmera.");
+    if (localStream.getVideoTracks().some(t => t.readyState === "live" && t.enabled)) {
+        camOn = true;
+        return true;
+    }
+    const camStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    const track = camStream.getVideoTracks()[0];
+    if (!track) throw new Error("Câmera indisponível.");
+    localStream.addTrack(track);
+    await replaceVideoTrackForPeers(track);
+    camOn = true;
+    addVideoTile(ctx.uid, `${ctx.displayName || "Você"} (você)`, localStream, true);
+    return true;
+}
+
+export async function disableCamera() {
+    if (!localStream) return false;
+    localStream.getVideoTracks().forEach(t => {
+        try { localStream.removeTrack(t); } catch {}
+        try { t.stop(); } catch {}
+    });
+    await replaceVideoTrackForPeers(null);
+    camOn = false;
+    if (ctx) addVideoTile(ctx.uid, `${ctx.displayName || "Você"} (você)`, localStream, true);
+    return false;
+}
+
+// Export toggles também (além do window.*)
+export function toggleMic() {
+    return window.devcordToggleMic();
+}
+
+export async function toggleCam() {
+    if (camOn) return disableCamera();
+    return enableCamera();
+}
+

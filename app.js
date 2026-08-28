@@ -6,7 +6,7 @@ import {
     ref, push, set, update, remove, get, onValue, off, query, orderByChild, startAt, endAt, limitToFirst
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-database.js";
 import { imageToBase64 } from "./image.js";
-import { joinVoiceChannel, leaveVoiceChannel } from "./webrtc.js";
+import { joinVoiceChannel, leaveVoiceChannel, startScreenShare as webrtcStartScreenShare, stopScreenShare, isSharingScreen, toggleCam as webrtcToggleCam, enableCamera, disableCamera } from "./webrtc.js";
 
 // =====================================================
 // ESTADO
@@ -338,6 +338,7 @@ function listenServers() {
         });
         ids.forEach(id => listenServer(id));
         renderServerList();
+        hideSplash();
     };
     onValue(reference, callback);
     userServersListener = { reference, callback };
@@ -730,7 +731,8 @@ $("server-tags-edit")?.addEventListener("input", (e) => {
     renderServerTagsPreview(e.target.value);
 });
 
-$("server-icon-url")?.addEventListener("input", (e) => {
+// URL desativado
+// $("server-icon-url")?.addEventListener("input", (e) => {
     const url = normalizeURL(e.target.value.trim()) || e.target.value.trim();
     if (url && exists("server-icon-preview")) $("server-icon-preview").src = url;
 });
@@ -1377,6 +1379,11 @@ function showView(type) {
     ["text", "voice", "forum", "server-settings", "discover", "friends", "dm"].forEach(t => {
         $("view-" + t)?.classList.toggle("hidden", t !== type);
     });
+    try {
+        pushNav({ view: type, serverId: currentServerId, uid: currentDmUid });
+        history.pushState({ view: type }, "");
+    } catch {}
+    if (type !== "dm") updateMobileBack();
 }
 
 // =====================================================
@@ -1384,6 +1391,7 @@ function showView(type) {
 // =====================================================
 function listenMessages() {
     if (!currentServerId || !currentChannelId) return;
+    try { refreshPinnedBar(); } catch {}
     stopMessagesListener();
     const path = `messages/${currentServerId}/${currentChannelId}`;
     const reference = databaseRef(path);
@@ -1907,11 +1915,16 @@ $("toggle-mic-btn")?.addEventListener("click", (e) => {
     } catch {}
 });
 
-$("toggle-cam-btn")?.addEventListener("click", (e) => {
+$("toggle-cam-btn")?.addEventListener("click", async (e) => {
     try {
-        const on = window.devcordToggleCam?.();
+        let on;
+        if (typeof webrtcToggleCam === "function") on = await webrtcToggleCam();
+        else on = window.devcordToggleCam?.();
         e.currentTarget.classList.toggle("disabled", on === false);
-    } catch {}
+        toast(on ? "Câmera ligada" : "Câmera desligada");
+    } catch (err) {
+        toast(err?.message || "Erro na câmera");
+    }
 });
 
 // =====================================================
@@ -1997,7 +2010,8 @@ $("profile-banner-input")?.addEventListener("change", (e) => {
     }
 });
 
-$("profile-avatar-url-input")?.addEventListener("input", (e) => {
+// URL desativado
+// $("profile-avatar-url-input")?.addEventListener("input", (e) => {
     const url = normalizeURL(e.target.value.trim()) || e.target.value.trim();
     if (url && exists("profile-avatar-preview")) $("profile-avatar-preview").src = url;
 });
@@ -3349,6 +3363,18 @@ function canShareScreen() {
 }
 
 async function startScreenShare(quality = 1080) {
+    // Na call de servidor: envia a tela pros peers via WebRTC
+    try {
+        if (typeof webrtcStartScreenShare === "function") {
+            // isInVoice - currentChannelType voice
+            if (currentChannelType === "voice") {
+                return await webrtcStartScreenShare(quality);
+            }
+        }
+    } catch (e) {
+        // se falhar, cai no preview local abaixo
+        if (e && e.message && /APK|celular|suporta|call antes/i.test(e.message)) throw e;
+    }
     if (!canShareScreen()) {
         throw new Error("Seu navegador/dispositivo não suporta compartilhar tela (comum no celular). Use Chrome/Edge no computador com HTTPS.");
     }
@@ -3376,6 +3402,8 @@ function openMsgSheet(el) {
     };
     const del = $("sheet-delete");
     if (del) del.style.display = __sheetMsg.mine ? "" : "none";
+    const ed = $("sheet-edit");
+    if (ed) ed.style.display = __sheetMsg.mine ? "" : "none";
     $("msg-action-sheet")?.classList.remove("hidden");
 }
 function closeMsgSheet() {
@@ -3407,8 +3435,47 @@ $("sheet-delete")?.addEventListener("click", async () => {
 });
 $("sheet-react")?.addEventListener("click", async () => {
     if (!__sheetMsg) return;
-    const emoji = prompt("Emoji:", "👍");
+    const emoji = prompt("Emoji (só na mensagem):", "👍");
     if (emoji) await toggleReaction(__sheetMsg.mid, emoji.trim().slice(0, 8));
+    closeMsgSheet();
+});
+
+$("sheet-edit")?.addEventListener("click", async () => {
+    if (!__sheetMsg?.mine || !currentServerId || !currentChannelId) return closeMsgSheet();
+    const novo = prompt("Editar mensagem:", __sheetMsg.text || "");
+    if (novo === null) return closeMsgSheet();
+    try {
+        await safeUpdate(`messages/${currentServerId}/${currentChannelId}/${__sheetMsg.mid}`, {
+            text: novo.trim().slice(0, 2000),
+            edited: true,
+            editedAt: serverTimestamp()
+        });
+        toast("Mensagem editada.");
+    } catch (e) {
+        toast("Erro: " + e.message);
+    }
+    closeMsgSheet();
+});
+
+$("sheet-pin")?.addEventListener("click", async () => {
+    if (!__sheetMsg || !currentServerId || !currentChannelId) return closeMsgSheet();
+    try {
+        const path = `messages/${currentServerId}/${currentChannelId}/${__sheetMsg.mid}`;
+        const snap = await safeGet(path);
+        const cur = snap.exists() ? snap.val() : {};
+        const pinned = !cur.pinned;
+        await safeUpdate(path, { pinned, pinnedAt: pinned ? serverTimestamp() : null });
+        if (pinned) {
+            await safeUpdate(`channels/${currentServerId}/${currentChannelId}`, {
+                pinnedMessageId: __sheetMsg.mid,
+                pinnedPreview: (__sheetMsg.text || "").slice(0, 80)
+            });
+        }
+        toast(pinned ? "Mensagem fixada." : "Mensagem desafixada.");
+        refreshPinnedBar();
+    } catch (e) {
+        toast("Erro: " + e.message);
+    }
     closeMsgSheet();
 });
 
@@ -3451,7 +3518,174 @@ $("sheet-react")?.addEventListener("click", async () => {
 })();
 
 
+
+// =====================================================
+// SPLASH + NAV + FILTRO + WEBHOOKS + MSG EDIT/PIN
+// =====================================================
+async function refreshPinnedBar() {
+    const bar = $("pinned-bar");
+    const txt = $("pinned-bar-text");
+    if (!bar || !currentServerId || !currentChannelId) {
+        bar?.classList.add("hidden");
+        return;
+    }
+    try {
+        const snap = await safeGet(`channels/${currentServerId}/${currentChannelId}`);
+        const ch = snap.exists() ? snap.val() : {};
+        if (ch.pinnedPreview || ch.pinnedMessageId) {
+            if (txt) txt.textContent = ch.pinnedPreview || "Mensagem fixada";
+            bar.classList.remove("hidden");
+        } else bar.classList.add("hidden");
+    } catch {
+        bar.classList.add("hidden");
+    }
+}
+
+function hideSplash() {
+    const s = $("splash-screen");
+    if (s) {
+        s.classList.add("hidden");
+        setTimeout(() => s.remove?.(), 400);
+    }
+}
+
+const navStack = [];
+function pushNav(state) {
+    navStack.push(state);
+    updateMobileBack();
+}
+function popNav() {
+    if (navStack.length < 2) return null;
+    navStack.pop();
+    return navStack[navStack.length - 1] || null;
+}
+function updateMobileBack() {
+    const btn = $("mobile-back-btn");
+    if (!btn) return;
+    if (navStack.length > 1) btn.classList.add("show");
+    else btn.classList.remove("show");
+}
+$("mobile-back-btn")?.addEventListener("click", () => {
+    const prev = popNav();
+    if (!prev) return;
+    if (prev.view === "dm" && prev.uid) openDm(prev.uid);
+    else if (prev.view) showView(prev.view);
+    else if (prev.serverId) {
+        // select server if function exists
+        try { document.querySelector(`.server-pill[data-server="${prev.serverId}"]`)?.click(); } catch {}
+    }
+    updateMobileBack();
+});
+
+// Hardware / browser back
+window.addEventListener("popstate", (e) => {
+    $("mobile-back-btn")?.click();
+});
+
+/** Filtro simples anti-18+ (nome + heurística). Não substitui moderação humana. */
+async function assertSafeImageFile(file) {
+    if (!file || !file.type.startsWith("image/")) throw new Error("Envie apenas imagens.");
+    const name = (file.name || "").toLowerCase();
+    const banned = ["nsfw", "porn", "xxx", "gore", "nude", "nudes", "hentai", "onlyfans", "18+"];
+    if (banned.some(b => name.includes(b))) {
+        throw new Error("Esta imagem foi bloqueada pelo filtro de segurança.");
+    }
+    if (file.size > 8 * 1024 * 1024) throw new Error("Imagem muito grande (máx. 8 MB).");
+    return true;
+}
+
+
+
+// Server webhooks
+async function loadWebhooksPanel() {
+    const list = $("webhooks-list");
+    const sel = $("webhook-channel");
+    if (!list || !currentServerId) return;
+    list.innerHTML = "";
+    if (sel) {
+        sel.innerHTML = "";
+        try {
+            const snap = await safeGet(`channels/${currentServerId}`);
+            if (snap.exists()) {
+                Object.entries(snap.val()).forEach(([id, ch]) => {
+                    if (ch?.type === "voice") return;
+                    const o = document.createElement("option");
+                    o.value = id;
+                    o.textContent = ch.name || id;
+                    sel.appendChild(o);
+                });
+            }
+        } catch {}
+    }
+    try {
+        const snap = await safeGet(`servers/${currentServerId}/webhooks`);
+        if (!snap.exists()) {
+            list.innerHTML = "<p class='empty-hint'>Nenhum webhook.</p>";
+            return;
+        }
+        Object.entries(snap.val()).forEach(([id, wh]) => {
+            const url = `${location.origin}${location.pathname}?webhook=${currentServerId}_${id}`;
+            const el = document.createElement("div");
+            el.className = "webhook-item";
+            el.innerHTML = `
+                <strong>${escapeHTML(wh.name || "Webhook")}</strong>
+                <span class="meta">Canal: ${escapeHTML(wh.channelId || "")}</span>
+                <code>${escapeHTML(url)}</code>
+                <button type="button" class="btn-secondary btn-sm" data-del-wh="${id}">Apagar</button>
+            `;
+            list.appendChild(el);
+        });
+        list.querySelectorAll("[data-del-wh]").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                await remove(databaseRef(`servers/${currentServerId}/webhooks/${btn.dataset.delWh}`));
+                loadWebhooksPanel();
+            });
+        });
+    } catch (e) {
+        list.innerHTML = `<p class='empty-hint'>${escapeHTML(e.message)}</p>`;
+    }
+}
+
+$("create-webhook-btn")?.addEventListener("click", async () => {
+    if (!currentServerId || !currentUser) return;
+    const can = await userHasAdminPower(currentServerId, currentUser.uid);
+    if (!can) return toast("Só admin/dono.");
+    const name = ($("webhook-name")?.value || "").trim().slice(0, 32) || "Webhook";
+    const channelId = $("webhook-channel")?.value;
+    if (!channelId) return toast("Escolha um canal.");
+    try {
+        const refPush = await safePush(`servers/${currentServerId}/webhooks`, {
+            name,
+            channelId,
+            createdBy: currentUser.uid,
+            createdAt: serverTimestamp(),
+            token: Math.random().toString(36).slice(2) + Date.now().toString(36)
+        });
+        toast("Webhook criado!");
+        if (exists("webhook-name")) $("webhook-name").value = "";
+        loadWebhooksPanel();
+    } catch (e) {
+        toast("Erro: " + e.message);
+    }
+});
+
+// settings tab webhooks
+document.addEventListener("click", (e) => {
+    const tab = e.target.closest("[data-stab]");
+    if (!tab) return;
+    const name = tab.dataset.stab;
+    document.querySelectorAll("[data-stab]").forEach(t => t.classList.toggle("active", t === tab));
+    document.querySelectorAll(".settings-panel").forEach(p => p.classList.add("hidden"));
+    const panel = document.getElementById("panel-" + name);
+    if (panel) panel.classList.remove("hidden");
+    if (name === "webhooks") loadWebhooksPanel();
+});
+
+
 (function init() {
+    // Splash: some até auth resolver
+    setTimeout(() => { try { hideSplash(); } catch {} }, 2500);
+
     showView(null);
     $("sticker-picker")?.classList.add("hidden");
     $("home-pill")?.classList.add("active");

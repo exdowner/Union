@@ -1,3 +1,14 @@
+/** filtro leve de nome de arquivo */
+export async function guardImageFile(file) {
+  if (!file) throw new Error("Sem arquivo");
+  if (!file.type || !file.type.startsWith("image/")) throw new Error("Apenas imagens");
+  const n = (file.name || "").toLowerCase();
+  const bad = ["nsfw","porn","xxx","hentai","gore","nude","nudes","onlyfans"];
+  if (bad.some(b => n.includes(b))) throw new Error("Imagem bloqueada pelo filtro");
+  if (file.size > 8 * 1024 * 1024) throw new Error("Máximo 8MB");
+  return file;
+}
+
 // image.js
 // Sistema próprio de imagens.
 // Não usa Cloudinary, API externa ou serviço pago.

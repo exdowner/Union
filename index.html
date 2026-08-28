@@ -3,13 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#0e1013">
+    <meta name="theme-color" content="#009c3b">
     <title>Union Chat</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Poppins:wght@500;600;700&family=Roboto:wght@400;500;700&family=Montserrat:wght@500;600;700&family=Oswald:wght@500;600;700&family=Playfair+Display:wght@500;600;700&family=Merriweather:wght@400;700&family=Nunito:wght@500;600;700&family=Raleway:wght@500;600;700&family=Ubuntu:wght@400;500;700&family=Comfortaa:wght@500;600;700&family=Pacifico&family=Lobster&family=Press+Start+2P&family=Bangers&family=Orbitron:wght@500;700&family=Audiowide&family=VT323&family=Indie+Flower&family=Caveat:wght@500;600;700&family=Dancing+Script:wght@500;600;700&family=Bebas+Neue&family=Anton&family=Quicksand:wght@500;600;700&family=Rubik:wght@500;600;700&family=Source+Code+Pro:wght@500;600&family=Fira+Code:wght@500;600&family=Comic+Neue:wght@400;700&family=Shadows+Into+Light&family=Permanent+Marker&family=Creepster&family=Fredoka:wght@500;600;700&family=Exo+2:wght@500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body data-theme="dark">
+    <!-- SPLASH -->
+    <div id="splash-screen">
+        <img src="logo.png" alt="Union" class="splash-logo">
+        <div class="splash-text">Union Chat</div>
+    </div>
+
     <!-- AUTH -->
     <div id="auth-screen" class="auth-screen">
         <div class="auth-card">
@@ -18,7 +24,7 @@
                     <img src="logo.png" alt="Union Chat" class="auth-logo-img">
                 </div>
                 <h1>Union Chat</h1>
-                <p>Seu espaço para conversar, criar comunidades e ficar conectado.</p>
+                <p>Comunidades brasileiras. Conversas reais. Feito pra quem vive online.</p>
             </div>
             <div class="auth-tabs">
                 <button type="button" class="auth-tab active" data-tab="login">Entrar</button>
@@ -118,6 +124,10 @@
 
             <!-- CHAT -->
             <section id="view-text" class="view">
+                <div id="pinned-bar" class="pinned-bar hidden">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1v3.76z"/></svg>
+                    <span id="pinned-bar-text">Mensagem fixada</span>
+                </div>
                 <div class="messages" id="messages"></div>
                 <div id="reply-bar" class="reply-bar hidden">
                     <span id="reply-bar-text">Respondendo...</span>
@@ -289,6 +299,7 @@
                     <div class="server-settings-tabs">
                         <button type="button" class="settings-tab active" data-stab="overview">Visão geral</button>
                         <button type="button" class="settings-tab" data-stab="roles">Cargos</button>
+                        <button type="button" class="settings-tab" data-stab="webhooks">Webhooks</button>
                         <button type="button" class="settings-tab" data-stab="emojis">Emojis</button>
                         <button type="button" class="settings-tab" data-stab="servertags">Tags</button>
                         <button type="button" class="settings-tab" data-stab="members">Membros</button>
@@ -309,16 +320,12 @@
                             <span class="upload-btn">Trocar ícone (arquivo)</span>
                             <input type="file" id="server-icon-edit" accept="image/*" class="hidden">
                         </label>
-                        <label>URL do ícone (GIF/PNG/JPG)
-                            <input type="url" id="server-icon-url" placeholder="https://...">
-                        </label>
+                        
                         <label class="upload-label">
                             <span class="upload-btn">Trocar banner (arquivo)</span>
                             <input type="file" id="server-banner-edit" accept="image/*" class="hidden">
                         </label>
-                        <label>URL do banner (GIF/PNG/JPG)
-                            <input type="url" id="server-banner-url" placeholder="https://...">
-                        </label>
+                        
                         <label>Tags do servidor (separadas por vírgula)
                             <input type="text" id="server-tags-edit" placeholder="gaming, brasil, anime, dev">
                         </label>
@@ -339,7 +346,19 @@
                         </label>
                         <label class="perm-check"><input type="checkbox" id="server-nsfw-edit"> Servidor NSFW / 18+</label>
                         <button type="button" class="btn-primary" id="save-server-overview">Salvar</button>
-                        <button type="button" class="btn-secondary" id="leave-server-btn">Sair do servidor</button>
+                        <div id="panel-webhooks" class="settings-panel hidden">
+                        <h3>Webhooks do servidor</h3>
+                        <p class="empty-hint">Crie um webhook para postar mensagens automáticas em um canal (tipo bots e integrações).</p>
+                        <label>Nome
+                            <input type="text" id="webhook-name" maxlength="32" placeholder="Bot de avisos">
+                        </label>
+                        <label>Canal de destino
+                            <select id="webhook-channel"></select>
+                        </label>
+                        <button type="button" class="btn-primary" id="create-webhook-btn">Criar webhook</button>
+                        <div id="webhooks-list" style="margin-top:14px"></div>
+                    </div>
+                    <button type="button" class="btn-secondary" id="leave-server-btn">Sair do servidor</button>
                         <button type="button" class="btn-secondary danger-btn hidden" id="delete-server-btn">Excluir servidor (somente dono)</button>
                         <p id="server-settings-hint" class="empty-hint" style="margin-top:8px"></p>
                     </div>
@@ -378,7 +397,7 @@
                             <button type="button" class="btn-secondary danger-btn" id="delete-server-tag-btn">Apagar tag</button>
                         </div>
                         <div id="server-tag-preview" class="clan-tag-preview" style="margin-top:12px"></div>
-                        <p class="empty-hint">Só existe 1 tag por servidor. Membros escolhem ela no perfil.</p>
+                        <p class="empty-hint">Upload de imagem apenas (sem URL). Só 1 tag por servidor. Membros escolhem ela no perfil.</p>
                     </div>
                     <div id="stab-members" class="settings-panel hidden">
                         <div id="members-list"></div>
@@ -439,16 +458,12 @@
                 <span class="upload-btn">Trocar foto</span>
                 <input type="file" id="profile-avatar-input" accept="image/*" class="hidden">
             </label>
-            <label>URL da foto
-                <input type="url" id="profile-avatar-url-input" placeholder="https://...">
-            </label>
+            
             <label class="upload-label">
                 <span class="upload-btn">Trocar banner</span>
                 <input type="file" id="profile-banner-input" accept="image/*" class="hidden">
             </label>
-            <label>URL do banner
-                <input type="url" id="profile-banner-url-input" placeholder="https://...">
-            </label>
+            
             <label>Nome de usuário (fixo, troca a cada 14 dias)
                 <input type="text" id="profile-username-input" maxlength="32" placeholder="seu_user" pattern="[a-zA-Z0-9_]{3,32}">
             </label>
@@ -752,13 +767,21 @@
     </div>
     <div id="msg-action-sheet" class="msg-sheet hidden">
         <div class="msg-sheet-panel">
-            <button type="button" id="sheet-react" class="msg-sheet-btn">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
-                Reagir
-            </button>
             <button type="button" id="sheet-reply" class="msg-sheet-btn">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
                 Responder
+            </button>
+            <button type="button" id="sheet-edit" class="msg-sheet-btn">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                Editar
+            </button>
+            <button type="button" id="sheet-pin" class="msg-sheet-btn">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1v3.76z"/></svg>
+                Fixar / Desafixar
+            </button>
+            <button type="button" id="sheet-react" class="msg-sheet-btn">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+                Reagir
             </button>
             <button type="button" id="sheet-delete" class="msg-sheet-btn danger">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
@@ -767,6 +790,9 @@
             <button type="button" id="sheet-cancel" class="msg-sheet-btn">Cancelar</button>
         </div>
     </div>
+    <button type="button" id="mobile-back-btn" title="Voltar" aria-label="Voltar">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+    </button>
     <div id="toast" class="toast hidden"></div>
 
     <script type="module" src="firebase-config.js"></script>
