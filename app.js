@@ -284,7 +284,10 @@ window.addEventListener("devcord:signed-in", async (e) => {
 // =====================================================
 function renderUserCard() {
     if (!currentUser) return;
-    if (exists("user-card-avatar")) $("user-card-avatar").src = getCurrentPhoto();
+    if (exists("user-card-avatar")) {
+        $("user-card-avatar").src = getCurrentPhoto();
+        try { applyAvatarDecoration($("user-card-avatar"), userProfile?.avatarDecoration); } catch {}
+    }
     if (exists("user-card-name")) {
         $("user-card-name").innerHTML = escapeHTML(getCurrentDisplayName(false)) + clanTagHTML(userProfile);
         $("user-card-name").style.fontFamily = userProfile?.nameFont || "Inter";
@@ -339,6 +342,7 @@ function listenServers() {
         ids.forEach(id => listenServer(id));
         renderServerList();
         hideSplash();
+        try { checkGlobalBanAndNotices(); } catch {}
     };
     onValue(reference, callback);
     userServersListener = { reference, callback };
@@ -584,6 +588,7 @@ async function openServerSettings() {
         toast("Não foi possível carregar o servidor.");
         return;
     }
+    if (exists("server-id-display")) $("server-id-display").textContent = currentServerId || "—";
     if (exists("server-name-edit")) $("server-name-edit").value = server.name || "";
     if (exists("server-desc-edit")) $("server-desc-edit").value = server.description || "";
     if (exists("server-icon-url")) $("server-icon-url").value = server.iconURL?.startsWith("http") ? server.iconURL : "";
@@ -1933,6 +1938,7 @@ function loadProfileFields() {
     if (!userProfile) userProfile = {};
     if (exists("profile-avatar-preview")) $("profile-avatar-preview").src = getCurrentPhoto();
     if (exists("profile-name-input")) $("profile-name-input").value = userProfile.displayName || "";
+    if (exists("profile-deco-url")) $("profile-deco-url").value = userProfile.avatarDecoration || "";
     if (exists("profile-username-input")) {
         $("profile-username-input").value = userProfile.username || "";
         $("profile-username-input").disabled = !canChangeUsername();
@@ -2065,6 +2071,7 @@ $("confirm-profile")?.addEventListener("click", async () => {
         clanTag,
         clanTagData,
         clanTagServerId: clanServerId || null,
+        avatarDecoration: normalizeURL(($("profile-deco-url")?.value || "").trim()) || userProfile?.avatarDecoration || null,
         privacy: {
             profileVisibility: $("privacy-profile-visibility")?.value || "everyone",
             allowDms: !!$("privacy-allow-dms")?.checked,
@@ -2145,6 +2152,10 @@ function renderPublicProfile(profile, uid) {
         $("public-profile-name").innerHTML = escapeHTML(safeName(d.displayName)) + (typeof clanTagHTML === "function" ? clanTagHTML(d) : "");
         $("public-profile-name").style.color = d.accentColor || "#5ee6c4";
         $("public-profile-name").style.fontFamily = d.nameFont || "Inter";
+    }
+    if (exists("public-profile-id")) $("public-profile-id").textContent = "ID: " + uid;
+    if (exists("public-profile-avatar") && d.avatarDecoration) {
+        try { applyAvatarDecoration($("public-profile-avatar"), d.avatarDecoration); } catch {}
     }
     if (exists("public-profile-username")) {
         $("public-profile-username").textContent = "@" + (d.username || d.displayName || "user").toString().toLowerCase().replace(/\s+/g, "_");
@@ -3684,7 +3695,204 @@ document.addEventListener("click", (e) => {
 });
 
 
+
+// =====================================================
+// APP SETTINGS + IDS + DECO + NFA + NOTICES + MUTE
+// =====================================================
+function applyAppChromeSettings(cfg = {}) {
+    const style = cfg.iconStyle || localStorage.getItem("union_icon_style") || "white";
+    document.body.classList.remove("icon-white", "icon-yellow", "icon-outline");
+    document.body.classList.add("icon-" + style);
+    const theme = cfg.colorTheme || localStorage.getItem("union_color_theme") || "br";
+    document.body.classList.remove("theme-br", "theme-dark", "theme-oled");
+    if (theme === "br") document.body.classList.add("theme-br");
+    if (theme === "oled") {
+        document.body.dataset.theme = "oled";
+    } else if (theme === "dark") {
+        document.body.dataset.theme = "dark";
+    } else {
+        document.body.dataset.theme = "dark";
+        document.body.classList.add("theme-br");
+    }
+    const anim = cfg.miniAnim !== false && localStorage.getItem("union_mini_anim") !== "0";
+    document.body.classList.toggle("mini-anim", anim);
+    document.body.classList.toggle("reduce-motion", !!cfg.reduceMotion || localStorage.getItem("union_reduce_motion") === "1");
+}
+
+$("open-app-settings-btn")?.addEventListener("click", () => {
+    if (!exists("modal-app-settings")) return;
+    if (exists("app-user-id")) $("app-user-id").textContent = currentUser?.uid || "—";
+    if (exists("app-user-email")) $("app-user-email").textContent = currentUser?.email || "—";
+    if (exists("app-icon-style")) $("app-icon-style").value = localStorage.getItem("union_icon_style") || "white";
+    if (exists("app-color-theme")) $("app-color-theme").value = localStorage.getItem("union_color_theme") || "br";
+    if (exists("app-mini-anim")) $("app-mini-anim").checked = localStorage.getItem("union_mini_anim") !== "0";
+    if (exists("app-reduce-motion")) $("app-reduce-motion").checked = localStorage.getItem("union_reduce_motion") === "1";
+    if (exists("app-nfa-enabled")) $("app-nfa-enabled").checked = localStorage.getItem("union_nfa") === "1";
+    if (exists("app-nfa-code")) $("app-nfa-code").value = localStorage.getItem("union_nfa_code") || "";
+    $("modal-app-settings").classList.remove("hidden");
+});
+
+document.querySelectorAll("[data-apptab]").forEach(btn => {
+    btn.addEventListener("click", () => {
+        const name = btn.dataset.apptab;
+        document.querySelectorAll("[data-apptab]").forEach(b => b.classList.toggle("active", b === btn));
+        ["visual", "privacy", "account", "security"].forEach(n => {
+            $("apptab-" + n)?.classList.toggle("hidden", n !== name);
+        });
+    });
+});
+
+$("copy-user-id")?.addEventListener("click", async () => {
+    try {
+        await navigator.clipboard.writeText(currentUser?.uid || "");
+        toast("ID copiado.");
+    } catch { toast(currentUser?.uid || ""); }
+});
+
+$("copy-server-id")?.addEventListener("click", async () => {
+    try {
+        await navigator.clipboard.writeText(currentServerId || "");
+        toast("ID do servidor copiado.");
+    } catch {}
+});
+
+$("app-nfa-generate")?.addEventListener("click", () => {
+    const code = Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join("").toUpperCase();
+    if (exists("app-nfa-code")) $("app-nfa-code").value = code;
+    localStorage.setItem("union_nfa_code", code);
+    toast("Guarde este código offline.");
+});
+
+$("save-app-settings")?.addEventListener("click", async () => {
+    const iconStyle = $("app-icon-style")?.value || "white";
+    const colorTheme = $("app-color-theme")?.value || "br";
+    const miniAnim = !!$("app-mini-anim")?.checked;
+    const reduceMotion = !!$("app-reduce-motion")?.checked;
+    localStorage.setItem("union_icon_style", iconStyle);
+    localStorage.setItem("union_color_theme", colorTheme);
+    localStorage.setItem("union_mini_anim", miniAnim ? "1" : "0");
+    localStorage.setItem("union_reduce_motion", reduceMotion ? "1" : "0");
+    localStorage.setItem("union_nfa", $("app-nfa-enabled")?.checked ? "1" : "0");
+    applyAppChromeSettings({ iconStyle, colorTheme, miniAnim, reduceMotion });
+    if (currentUser) {
+        try {
+            await safeUpdate(`users/${currentUser.uid}`, {
+                appSettings: {
+                    iconStyle, colorTheme, miniAnim, reduceMotion,
+                    privacyFriends: $("app-privacy-friends")?.value || "everyone",
+                    privacyDms: !!$("app-privacy-dms")?.checked,
+                    privacyOnline: !!$("app-privacy-online")?.checked,
+                    nfa: !!$("app-nfa-enabled")?.checked
+                }
+            });
+        } catch (e) { console.warn(e); }
+    }
+    toast("Configurações salvas.");
+    $("modal-app-settings")?.classList.add("hidden");
+});
+
+// deco upload
+$("profile-deco-upload-btn")?.addEventListener("click", () => $("profile-deco-file")?.click());
+$("profile-deco-file")?.addEventListener("change", async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+        const url = file.type === "image/gif" ? await fileToDataURL(file) : await convertImage(file, { maxWidth: 256, maxHeight: 256, quality: 0.9 });
+        if (exists("profile-deco-url")) $("profile-deco-url").value = url;
+        toast("Decoração pronta — salve o perfil.");
+    } catch (err) { toast(err.message); }
+});
+
+function applyAvatarDecoration(photoEl, decoUrl) {
+    if (!photoEl) return;
+    let wrap = photoEl.closest(".avatar-deco-wrap");
+    if (!decoUrl) {
+        if (wrap) {
+            const parent = wrap.parentNode;
+            parent?.insertBefore(photoEl, wrap);
+            wrap.remove();
+        }
+        return;
+    }
+    if (!wrap) {
+        wrap = document.createElement("div");
+        wrap.className = "avatar-deco-wrap";
+        photoEl.parentNode?.insertBefore(wrap, photoEl);
+        wrap.appendChild(photoEl);
+        const frame = document.createElement("div");
+        frame.className = "avatar-deco-frame";
+        wrap.appendChild(frame);
+    }
+    const frame = wrap.querySelector(".avatar-deco-frame");
+    if (frame) frame.style.backgroundImage = `url("${decoUrl}")`;
+}
+
+async function checkGlobalBanAndNotices() {
+    if (!currentUser) return;
+    try {
+        const ban = await safeGet(`globalBans/${currentUser.uid}`);
+        if (ban.exists()) {
+            const r = ban.val();
+            alert(r?.reason || "Sua conta está banida.");
+            try { await auth.signOut(); } catch {}
+            return;
+        }
+        const media = await safeGet(`mediaRestrictions/${currentUser.uid}`);
+        if (media.exists()) {
+            window.__unionMediaRestricted = media.val();
+        }
+        const notices = await safeGet(`userNotices/${currentUser.uid}`);
+        if (notices.exists()) {
+            const vals = Object.entries(notices.val());
+            const last = vals.sort((a, b) => (b[1]?.at || 0) - (a[1]?.at || 0))[0];
+            if (last && last[1]?.message && !sessionStorage.getItem("notice_" + last[0])) {
+                alert(last[1].message);
+                sessionStorage.setItem("notice_" + last[0], "1");
+            }
+        }
+    } catch (e) { console.warn(e); }
+}
+
+// Mute member (server owner)
+async function muteMember(serverId, uid, muted) {
+    await safeSet(`servers/${serverId}/mutes/${uid}`, muted ? { at: Date.now(), by: currentUser.uid } : null);
+    if (!muted) {
+        try { await remove(databaseRef(`servers/${serverId}/mutes/${uid}`)); } catch {}
+    }
+    toast(muted ? "Membro mutado." : "Mute removido.");
+}
+
+
+document.addEventListener("click", async (e) => {
+    const muteBtn = e.target.closest("[data-mute-member]");
+    if (muteBtn && currentServerId) {
+        const uid = muteBtn.dataset.muteMember;
+        const muted = muteBtn.dataset.muted !== "1";
+        try {
+            const can = await userHasAdminPower(currentServerId, currentUser.uid);
+            if (!can) return toast("Sem permissão.");
+            await muteMember(currentServerId, uid, muted);
+            muteBtn.dataset.muted = muted ? "1" : "0";
+            muteBtn.textContent = muted ? "Desmutar" : "Mutar";
+        } catch (err) { toast(err.message); }
+    }
+    const banBtn = e.target.closest("[data-ban-member]");
+    if (banBtn && currentServerId) {
+        const uid = banBtn.dataset.banMember;
+        if (!confirm("Banir este membro do servidor?")) return;
+        try {
+            const can = await userHasAdminPower(currentServerId, currentUser.uid);
+            if (!can) return toast("Sem permissão.");
+            await safeSet(`servers/${currentServerId}/bans/${uid}`, { at: Date.now(), by: currentUser.uid });
+            await remove(databaseRef(`serverMembers/${currentServerId}/${uid}`));
+            toast("Membro banido.");
+        } catch (err) { toast(err.message); }
+    }
+});
+
 (function init() {
+    try { applyAppChromeSettings(); } catch {}
+
     setTimeout(function(){ try { hideSplash(); } catch(e){} }, 500);
     setTimeout(function(){ try { hideSplash(); } catch(e){} }, 1800);
     document.addEventListener("click", function(){ try { hideSplash(); } catch(e){} }, { once: true });

@@ -1,0 +1,213 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "users": {
+      ".read": "auth != null",
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid == $uid",
+        "stickers": {
+          "$sid": {
+            ".write": "auth != null && auth.uid == $uid"
+          }
+        }
+      }
+    },
+
+    "servers": {
+      ".read": "auth != null",
+      "$serverId": {
+        ".write": "auth != null && (
+          (!data.exists() && newData.child('ownerId').val() == auth.uid)
+          || data.child('ownerId').val() == auth.uid
+          || (!newData.exists() && data.child('ownerId').val() == auth.uid)
+        )",
+        "roles": {
+          "$roleId": {
+            ".write": "auth != null && root.child('servers').child($serverId).child('ownerId').val() == auth.uid"
+          }
+        },
+        "emojis": {
+          "$emojiId": {
+            ".write": "auth != null && root.child('servers').child($serverId).child('ownerId').val() == auth.uid"
+          }
+        },
+        "webhooks": {
+          "$wid": {
+            ".write": "auth != null && root.child('servers').child($serverId).child('ownerId').val() == auth.uid"
+          }
+        }
+      }
+    },
+
+    "channels": {
+      "$serverId": {
+        ".read": "auth != null",
+        ".write": "auth != null && (
+          root.child('servers').child($serverId).child('ownerId').val() == auth.uid
+          || root.child('serverMembers').child($serverId).child(auth.uid).exists()
+        )"
+      }
+    },
+
+    "serverMembers": {
+      "$serverId": {
+        ".read": "auth != null",
+        ".write": "auth != null && root.child('servers').child($serverId).child('ownerId').val() == auth.uid",
+        "$uid": {
+          ".write": "auth != null && (
+            auth.uid == $uid
+            || root.child('servers').child($serverId).child('ownerId').val() == auth.uid
+          )"
+        }
+      }
+    },
+
+    "userServers": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        "$serverId": {
+          ".write": "auth != null && auth.uid == $uid"
+        }
+      }
+    },
+
+    "messages": {
+      "$serverId": {
+        "$channelId": {
+          ".read": "auth != null",
+          "$msgId": {
+            ".write": "auth != null
+              && (root.child('serverMembers').child($serverId).child(auth.uid).exists()
+                  || root.child('servers').child($serverId).child('ownerId').val() == auth.uid)
+              && (
+                (!data.exists() && newData.child('uid').val() == auth.uid)
+                || data.child('uid').val() == auth.uid
+              )"
+          }
+        }
+      }
+    },
+
+    "posts": {
+      "$serverId": {
+        "$channelId": {
+          ".read": "auth != null",
+          "$postId": {
+            ".write": "auth != null && (
+              root.child('serverMembers').child($serverId).child(auth.uid).exists()
+              || root.child('servers').child($serverId).child('ownerId').val() == auth.uid
+            )"
+          }
+        }
+      }
+    },
+
+    "friends": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        "$fid": {
+          ".write": "auth != null && (auth.uid == $uid || auth.uid == $fid)"
+        }
+      }
+    },
+
+    "friendRequests": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        "$from": {
+          ".write": "auth != null && (auth.uid == $from || auth.uid == $uid)"
+        }
+      }
+    },
+
+    "notifications": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        "$nid": {
+          ".write": "auth != null"
+        }
+      }
+    },
+
+    "dms": {
+      "$dmId": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        "messages": {
+          "$mid": {
+            ".write": "auth != null && (
+              !data.exists() && newData.child('uid').val() == auth.uid
+            )"
+          }
+        }
+      }
+    },
+
+    "blocks": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        "$tid": {
+          ".write": "auth != null && auth.uid == $uid"
+        }
+      }
+    },
+
+    "reports": {
+      ".read": false,
+      "$rid": {
+        ".write": "auth != null && !data.exists() && newData.child('from').val() == auth.uid"
+      }
+    },
+
+    "voicePresence": {
+      "$serverId": {
+        "$channelId": {
+          ".read": "auth != null",
+          "$uid": {
+            ".write": "auth != null && auth.uid == $uid"
+          }
+        }
+      }
+    },
+
+    "calls": {
+      ".read": "auth != null",
+      "$callId": {
+        ".write": "auth != null"
+      }
+    },
+
+    "stickers": {
+      "$uid": {
+        ".read": "auth != null",
+        "$sid": {
+          ".write": "auth != null && auth.uid == $uid"
+        }
+      }
+    },
+
+    "globalBans": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+    "userNotices": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        "$nid": {
+          ".write": "auth != null"
+        }
+      }
+    },
+    "mediaRestrictions": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    }
+  }
+}

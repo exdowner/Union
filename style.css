@@ -1632,3 +1632,140 @@ body { background: var(--bg-0); }
   background: linear-gradient(90deg, rgba(0,156,59,.12), rgba(0,39,118,.2));
   border-bottom: 1px solid var(--line);
 }
+
+/* URL inputs estilizados (não default feio) */
+.url-input {
+  width: 100%;
+  padding: 12px 14px !important;
+  border-radius: 12px !important;
+  border: 1px solid var(--line) !important;
+  background: var(--bg-2) !important;
+  color: var(--text-0) !important;
+  font-size: 13px !important;
+  font-family: var(--font-body) !important;
+  transition: border-color .15s, box-shadow .15s;
+}
+.url-input:focus {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px rgba(61, 214, 140, 0.15) !important;
+  outline: none !important;
+}
+.url-input::placeholder {
+  color: var(--text-2);
+  opacity: 0.9;
+}
+
+/* Icon styles */
+body.icon-white .icon-btn svg,
+body.icon-white .server-pill svg {
+  stroke: #ffffff;
+  color: #ffffff;
+}
+body.icon-yellow .icon-btn svg,
+body.icon-yellow .server-pill svg {
+  stroke: #ffdf00;
+  color: #ffdf00;
+}
+body.icon-outline .icon-btn svg,
+body.icon-outline .server-pill svg {
+  stroke: #fff;
+  fill: none;
+  stroke-width: 2.2;
+  filter: drop-shadow(0 0 1px #000);
+}
+body.icon-yellow .icon-btn {
+  background: #111;
+  border: 1px solid #ffdf00;
+}
+
+/* BR theme boost */
+body.theme-br {
+  --accent: #009c3b;
+  --accent-2: #ffdf00;
+  --accent-3: #002776;
+  --accent-dim: #007a2e;
+  --online: #009c3b;
+}
+body.theme-br .btn-primary {
+  background: linear-gradient(135deg, #009c3b, #002776);
+  color: #fff;
+}
+body.theme-br .server-pill.active {
+  box-shadow: 0 0 0 2px #ffdf00;
+}
+
+/* Mini animations */
+body.mini-anim .server-pill,
+body.mini-anim .btn-primary,
+body.mini-anim .btn-secondary,
+body.mini-anim .message {
+  transition: transform .18s ease, background .18s ease, box-shadow .18s ease;
+}
+body.mini-anim .server-pill:active,
+body.mini-anim .btn-primary:active {
+  transform: scale(0.96);
+}
+body.mini-anim .message {
+  animation: msg-in .25s ease;
+}
+@keyframes msg-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+body.reduce-motion * {
+  animation: none !important;
+  transition: none !important;
+}
+
+/* ID boxes */
+.id-box {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.id-box code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--accent-2);
+  word-break: break-all;
+  flex: 1;
+}
+
+/* Avatar decoration */
+.avatar-deco-wrap {
+  position: relative;
+  display: inline-block;
+  width: 48px;
+  height: 48px;
+}
+.avatar-deco-wrap .avatar {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.avatar-deco-frame {
+  position: absolute;
+  inset: -6px;
+  pointer-events: none;
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  z-index: 2;
+}
+
+.app-settings-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.app-settings-panel label {
+  display: block;
+  margin-bottom: 12px;
+}

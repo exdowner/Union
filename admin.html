@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Union — Painel de moderação</title>
+  <style>
+    :root {
+      --bg: #0e1013; --card: #15181c; --line: #2a2f36;
+      --text: #eef1f3; --muted: #a9b0b8;
+      --green: #009c3b; --yellow: #ffdf00; --blue: #002776; --danger: #e74c3c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: Inter, system-ui, sans-serif;
+      background: radial-gradient(ellipse at top, #00277655, transparent 50%), var(--bg);
+      color: var(--text); min-height: 100vh; padding: 20px;
+    }
+    h1 { margin: 0 0 8px; font-size: 22px; }
+    .sub { color: var(--muted); margin-bottom: 20px; font-size: 14px; }
+    .card {
+      background: var(--card); border: 1px solid var(--line);
+      border-radius: 14px; padding: 16px; margin-bottom: 16px; max-width: 920px;
+    }
+    label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+    input, select, textarea {
+      width: 100%; padding: 10px 12px; border-radius: 10px;
+      border: 1px solid var(--line); background: #1b1f24; color: var(--text);
+      margin-bottom: 10px; font: inherit;
+    }
+    button {
+      border: 0; border-radius: 10px; padding: 10px 14px; font-weight: 600;
+      cursor: pointer; margin-right: 8px; margin-top: 4px;
+    }
+    .btn-g { background: var(--green); color: #fff; }
+    .btn-y { background: var(--yellow); color: #111; }
+    .btn-d { background: var(--danger); color: #fff; }
+    .btn-b { background: var(--blue); color: #fff; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .row > * { flex: 1; min-width: 180px; }
+    .list { display: flex; flex-direction: column; gap: 10px; }
+    .item {
+      display: flex; gap: 12px; align-items: center; padding: 10px;
+      background: #1b1f24; border-radius: 12px; border: 1px solid var(--line);
+    }
+    .item img { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; background: #333; }
+    .item .meta { flex: 1; min-width: 0; }
+    .item strong { display: block; }
+    .item span { font-size: 12px; color: var(--muted); word-break: break-all; }
+    .warn { font-size: 12px; color: var(--yellow); margin-top: 8px; }
+    code { color: var(--yellow); font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Union — Moderação</h1>
+  <p class="sub">Painel externo. Use a <strong>mesma conta Firebase</strong> de admin. Banimentos gravam em <code>globalBans</code> e avisos em <code>userNotices</code>.</p>
+
+  <div class="card">
+    <label>Cole a config Firebase (apiKey, authDomain, databaseURL, projectId) — ou use a do app se abrir no mesmo domínio</label>
+    <textarea id="cfg" rows="4" placeholder='{"apiKey":"...","authDomain":"...","databaseURL":"...","projectId":"..."}'></textarea>
+    <div class="row">
+      <div>
+        <label>Email admin</label>
+        <input id="email" type="email" autocomplete="username" />
+      </div>
+      <div>
+        <label>Senha</label>
+        <input id="pass" type="password" autocomplete="current-password" />
+      </div>
+    </div>
+    <button class="btn-g" id="btn-login">Entrar</button>
+    <span id="login-status" class="sub"></span>
+  </div>
+
+  <div class="card">
+    <h3>Buscar usuários</h3>
+    <input id="q-user" placeholder="Nome, @username ou UID" />
+    <button class="btn-b" id="btn-search-users">Buscar</button>
+    <div class="list" id="user-results"></div>
+  </div>
+
+  <div class="card">
+    <h3>Buscar servidores</h3>
+    <input id="q-server" placeholder="Nome, slug ou ID do servidor" />
+    <button class="btn-b" id="btn-search-servers">Buscar</button>
+    <div class="list" id="server-results"></div>
+  </div>
+
+  <div class="card">
+    <h3>Ação rápida por ID</h3>
+    <div class="row">
+      <div>
+        <label>UID do usuário</label>
+        <input id="ban-uid" placeholder="uid..." />
+      </div>
+      <div>
+        <label>ID do servidor (opcional, ban só nele)</label>
+        <input id="ban-server" placeholder="serverId..." />
+      </div>
+    </div>
+    <label>Mensagem na tela do usuário</label>
+    <textarea id="ban-msg" rows="3" placeholder="Motivo do banimento / punição"></textarea>
+    <button class="btn-d" id="btn-ban">Banir</button>
+    <button class="btn-y" id="btn-warn">Avisar / punir (sem ban)</button>
+    <button class="btn-b" id="btn-mute-media">Revogar câmera+mic (flag)</button>
+    <button class="btn-g" id="btn-unban">Desbanir</button>
+    <p class="warn">Ban global impede uso do app se o cliente checar <code>globalBans/{uid}</code>. Revogar mídia grava <code>mediaRestrictions/{uid}</code>.</p>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
+    import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
+    import { getDatabase, ref, get, set, remove, update } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-database.js";
+
+    let app, auth, db;
+
+    function $(id) { return document.getElementById(id); }
+
+    $("btn-login").onclick = async () => {
+      try {
+        let cfg;
+        try { cfg = JSON.parse($("cfg").value.trim()); }
+        catch {
+          // tenta importar config do mesmo host
+          const mod = await import("./firebase-config.js");
+          cfg = mod.firebaseConfig || mod.default;
+        }
+        app = initializeApp(cfg);
+        auth = getAuth(app);
+        db = getDatabase(app);
+        await signInWithEmailAndPassword(auth, $("email").value.trim(), $("pass").value);
+        $("login-status").textContent = "Logado: " + auth.currentUser.uid;
+      } catch (e) {
+        $("login-status").textContent = "Erro: " + e.message;
+      }
+    };
+
+    async function searchUsers() {
+      const q = $("q-user").value.trim().toLowerCase();
+      const snap = await get(ref(db, "users"));
+      const box = $("user-results");
+      box.innerHTML = "";
+      if (!snap.exists()) return;
+      Object.entries(snap.val()).forEach(([uid, u]) => {
+        const name = (u.displayName || "").toLowerCase();
+        const un = (u.username || "").toLowerCase();
+        if (q && !name.includes(q) && !un.includes(q) && !uid.toLowerCase().includes(q)) return;
+        const el = document.createElement("div");
+        el.className = "item";
+        el.innerHTML = `
+          <img src="${u.photoURL || ""}" alt="" onerror="this.style.opacity=.3"/>
+          <div class="meta">
+            <strong>${u.displayName || "User"}</strong>
+            <span>@${u.username || "—"} · ${uid}</span>
+          </div>
+          <button class="btn-d">Banir</button>`;
+        el.querySelector("button").onclick = () => {
+          $("ban-uid").value = uid;
+          window.scrollTo(0, document.body.scrollHeight);
+        };
+        box.appendChild(el);
+      });
+    }
+
+    async function searchServers() {
+      const q = $("q-server").value.trim().toLowerCase();
+      const snap = await get(ref(db, "servers"));
+      const box = $("server-results");
+      box.innerHTML = "";
+      if (!snap.exists()) return;
+      Object.entries(snap.val()).forEach(([id, s]) => {
+        if (s.deleted) return;
+        const name = (s.name || "").toLowerCase();
+        const slug = (s.slug || "").toLowerCase();
+        if (q && !name.includes(q) && !slug.includes(q) && !id.toLowerCase().includes(q)) return;
+        const el = document.createElement("div");
+        el.className = "item";
+        el.innerHTML = `
+          <img src="${s.iconURL || ""}" alt="" style="border-radius:12px" onerror="this.style.opacity=.3"/>
+          <div class="meta">
+            <strong>${s.name || "Servidor"}</strong>
+            <span>ID: ${id} · dono: ${s.ownerId || "—"}</span>
+          </div>`;
+        box.appendChild(el);
+      });
+    }
+
+    $("btn-search-users").onclick = () => searchUsers().catch(e => alert(e.message));
+    $("btn-search-servers").onclick = () => searchServers().catch(e => alert(e.message));
+
+    async function notice(uid, message, type) {
+      await set(ref(db, "userNotices/" + uid + "/" + Date.now()), {
+        message, type, at: Date.now(), from: auth.currentUser.uid
+      });
+    }
+
+    $("btn-ban").onclick = async () => {
+      const uid = $("ban-uid").value.trim();
+      if (!uid) return alert("UID obrigatório");
+      const msg = $("ban-msg").value.trim() || "Você foi banido.";
+      const sid = $("ban-server").value.trim();
+      if (sid) {
+        await set(ref(db, `servers/${sid}/bans/${uid}`), { reason: msg, at: Date.now() });
+      } else {
+        await set(ref(db, "globalBans/" + uid), { reason: msg, at: Date.now(), by: auth.currentUser.uid });
+      }
+      await notice(uid, msg, "ban");
+      alert("Ban aplicado.");
+    };
+
+    $("btn-warn").onclick = async () => {
+      const uid = $("ban-uid").value.trim();
+      if (!uid) return alert("UID obrigatório");
+      const msg = $("ban-msg").value.trim() || "Aviso da moderação.";
+      await notice(uid, msg, "warn");
+      alert("Aviso enviado.");
+    };
+
+    $("btn-mute-media").onclick = async () => {
+      const uid = $("ban-uid").value.trim();
+      if (!uid) return alert("UID obrigatório");
+      await set(ref(db, "mediaRestrictions/" + uid), {
+        camera: false, microphone: false, at: Date.now(), by: auth.currentUser.uid
+      });
+      await notice(uid, $("ban-msg").value.trim() || "Câmera e microfone restritos.", "media");
+      alert("Restrição de mídia aplicada.");
+    };
+
+    $("btn-unban").onclick = async () => {
+      const uid = $("ban-uid").value.trim();
+      if (!uid) return alert("UID obrigatório");
+      const sid = $("ban-server").value.trim();
+      if (sid) await remove(ref(db, `servers/${sid}/bans/${uid}`));
+      else await remove(ref(db, "globalBans/" + uid));
+      await remove(ref(db, "mediaRestrictions/" + uid));
+      alert("Removido.");
+    };
+  </script>
+</body>
+</html>
