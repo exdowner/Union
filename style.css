@@ -7,8 +7,10 @@
   --text-0: #eef1f3;
   --text-1: #a9b0b8;
   --text-2: #6b7280;
-  --accent: #5ee6c4;
-  --accent-dim: #2f8f79;
+  --accent: #3dd68c;
+  --accent-2: #ffdf00;
+  --accent-3: #4c8bf5;
+  --accent-dim: #2a9d66;
   --danger: #e6635e;
   --online: #3ba55d;
   --idle: #faa81a;
@@ -29,8 +31,10 @@
   --text-0: #060607;
   --text-1: #4e5058;
   --text-2: #747f8d;
-  --accent: #1a9b7a;
-  --accent-dim: #0d6b54;
+  --accent: #009c3b;
+  --accent-dim: #007a2e;
+  --accent-2: #c9b000;
+  --accent-3: #002776;
 }
 [data-theme="oled"] {
   --bg-0: #000000;
@@ -41,8 +45,10 @@
   --text-0: #f0f0f0;
   --text-1: #a0a0a0;
   --text-2: #666666;
-  --accent: #5ee6c4;
-  --accent-dim: #2f8f79;
+  --accent: #009c3b;
+  --accent-dim: #007a2e;
+  --accent-2: #ffdf00;
+  --accent-3: #002776;
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
@@ -1457,3 +1463,172 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); }
 }
 /* hide old inline actions */
 .msg-actions { display: none !important; }
+
+
+/* redesign soft */
+body { background: var(--bg-0); }
+
+/* Splash */
+#splash-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  background: linear-gradient(160deg, #0a1210 0%, #002776 120%);
+}
+#splash-screen.hidden, .splash-screen.hidden {
+  display: none !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+}
+.splash-logo {
+  width: 88px;
+  height: 88px;
+  border-radius: 22px;
+  object-fit: cover;
+  animation: splash-spin 1.1s linear infinite;
+  box-shadow: 0 0 0 3px rgba(255,223,0,.35), 0 12px 40px rgba(0,0,0,.45);
+  filter: grayscale(0);
+}
+@keyframes splash-spin {
+  to { transform: rotate(360deg); }
+}
+.splash-text {
+  color: #ffdf00;
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: .08em;
+  font-size: 14px;
+  text-transform: uppercase;
+}
+
+/* Auth card BR */
+.auth-card {
+  border: 1px solid rgba(0,156,59,.35);
+  box-shadow: 0 20px 60px rgba(0,0,0,.45), 0 0 0 1px rgba(255,223,0,.08);
+  background: linear-gradient(180deg, #12201b 0%, #0f1a16 100%);
+}
+.auth-logo {
+  background: linear-gradient(145deg, #002776, #0a1210) !important;
+  border-color: rgba(255,223,0,.4) !important;
+}
+.btn-primary { font-weight: 600; }
+
+/* Icons white */
+.icon-btn, .server-pill svg, .main-header-actions svg, .user-card svg {
+  color: #fff;
+  stroke: #fff;
+}
+.icon-btn:hover {
+  background: rgba(0,156,59,.2);
+  color: var(--accent-2);
+}
+
+/* Message form */
+.message-form {
+  background: var(--bg-1);
+  border-top: 1px solid var(--line);
+  gap: 6px;
+}
+.btn-send {
+  min-width: 72px;
+}
+
+/* Pinned bar */
+.pinned-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: rgba(0,39,118,.35);
+  border-bottom: 1px solid rgba(255,223,0,.2);
+  font-size: 13px;
+  color: var(--text-0);
+}
+.pinned-bar.hidden { display: none; }
+.pinned-bar strong { color: var(--accent-2); }
+
+/* Webhook list */
+.webhook-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  margin-bottom: 8px;
+}
+.webhook-item code {
+  font-size: 11px;
+  word-break: break-all;
+  color: var(--accent-2);
+}
+
+/* Sheet extra buttons */
+.msg-sheet-btn svg { stroke: #fff; }
+.msg-sheet-panel {
+  background: linear-gradient(180deg, #152420, #0f1a16);
+  border-color: rgba(0,156,59,.4);
+}
+
+/* Mobile back floating */
+#mobile-back-btn {
+  display: none;
+  position: fixed;
+  left: 10px;
+  bottom: 88px;
+  z-index: 55;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(0,39,118,.92);
+  border: 1px solid rgba(255,223,0,.45);
+  color: #fff;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 20px rgba(0,0,0,.4);
+}
+@media (max-width: 768px) {
+  #mobile-back-btn.show { display: inline-flex; }
+}
+
+/* Channel sidebar polish */
+.channel-sidebar {
+  background: linear-gradient(180deg, #0f1a16, #0a1210);
+  border-right: 1px solid var(--line);
+}
+.server-header {
+  border-bottom: 1px solid rgba(0,156,59,.25);
+}
+.user-card {
+  border-top: 1px solid rgba(255,223,0,.15);
+  background: rgba(0,39,118,.15);
+}
+
+/* Messages */
+.message {
+  border-radius: 10px;
+  padding: 6px 10px;
+}
+.message:hover {
+  background: rgba(0,156,59,.06);
+}
+.msg-pinned-badge {
+  font-size: 11px;
+  color: var(--accent-2);
+  font-weight: 600;
+}
+
+/* Original layout touches */
+.app-shell {
+  gap: 0;
+}
+.main-header {
+  background: linear-gradient(90deg, rgba(0,156,59,.12), rgba(0,39,118,.2));
+  border-bottom: 1px solid var(--line);
+}

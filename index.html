@@ -10,9 +10,8 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body data-theme="dark">
-    <!-- SPLASH -->
-    <div id="splash-screen">
-        <img src="logo.png" alt="Union" class="splash-logo">
+    <div id="splash-screen" class="splash-screen">
+        <img src="logo.png" alt="Union" class="splash-logo" onerror="this.style.display='none'">
         <div class="splash-text">Union Chat</div>
     </div>
 
@@ -24,7 +23,7 @@
                     <img src="logo.png" alt="Union Chat" class="auth-logo-img">
                 </div>
                 <h1>Union Chat</h1>
-                <p>Comunidades brasileiras. Conversas reais. Feito pra quem vive online.</p>
+                <p>Seu espaço para conversar, criar comunidades e ficar conectado.</p>
             </div>
             <div class="auth-tabs">
                 <button type="button" class="auth-tab active" data-tab="login">Entrar</button>
@@ -319,6 +318,12 @@
                         <label class="upload-label">
                             <span class="upload-btn">Trocar ícone (arquivo)</span>
                             <input type="file" id="server-icon-edit" accept="image/*" class="hidden">
+                        <label>URL do ícone (opcional)
+                            <input type="url" id="server-icon-url" placeholder="https://...">
+                        </label>
+                        <label>URL do banner (opcional)
+                            <input type="url" id="server-banner-url" placeholder="https://...">
+                        </label>
                         </label>
                         
                         <label class="upload-label">
@@ -457,6 +462,12 @@
             <label class="upload-label">
                 <span class="upload-btn">Trocar foto</span>
                 <input type="file" id="profile-avatar-input" accept="image/*" class="hidden">
+                <label>URL da foto (opcional)
+                    <input type="url" id="profile-avatar-url-input" placeholder="https://...">
+                </label>
+                <label>URL do banner (opcional)
+                    <input type="url" id="profile-banner-url-input" placeholder="https://...">
+                </label>
             </label>
             
             <label class="upload-label">

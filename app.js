@@ -731,8 +731,7 @@ $("server-tags-edit")?.addEventListener("input", (e) => {
     renderServerTagsPreview(e.target.value);
 });
 
-// URL desativado
-// $("server-icon-url")?.addEventListener("input", (e) => {
+$("server-icon-url")?.addEventListener("input", (e) => {
     const url = normalizeURL(e.target.value.trim()) || e.target.value.trim();
     if (url && exists("server-icon-preview")) $("server-icon-preview").src = url;
 });
@@ -2010,8 +2009,7 @@ $("profile-banner-input")?.addEventListener("change", (e) => {
     }
 });
 
-// URL desativado
-// $("profile-avatar-url-input")?.addEventListener("input", (e) => {
+$("profile-avatar-url-input")?.addEventListener("input", (e) => {
     const url = normalizeURL(e.target.value.trim()) || e.target.value.trim();
     if (url && exists("profile-avatar-preview")) $("profile-avatar-preview").src = url;
 });
@@ -3542,11 +3540,14 @@ async function refreshPinnedBar() {
 }
 
 function hideSplash() {
-    const s = $("splash-screen");
-    if (s) {
-        s.classList.add("hidden");
-        setTimeout(() => s.remove?.(), 400);
-    }
+    try {
+        const s = document.getElementById("splash-screen");
+        if (s) {
+            s.classList.add("hidden");
+            s.style.display = "none";
+            s.style.pointerEvents = "none";
+        }
+    } catch (e) {}
 }
 
 const navStack = [];
@@ -3671,11 +3672,12 @@ $("create-webhook-btn")?.addEventListener("click", async () => {
 
 // settings tab webhooks
 document.addEventListener("click", (e) => {
-    const tab = e.target.closest("[data-stab]");
+    const tab = e.target.closest(".server-settings-tabs [data-stab]");
     if (!tab) return;
     const name = tab.dataset.stab;
-    document.querySelectorAll("[data-stab]").forEach(t => t.classList.toggle("active", t === tab));
-    document.querySelectorAll(".settings-panel").forEach(p => p.classList.add("hidden"));
+    const root = tab.closest(".modal") || document.getElementById("view-server-settings") || document;
+    root.querySelectorAll(".server-settings-tabs [data-stab]").forEach(t => t.classList.toggle("active", t === tab));
+    root.querySelectorAll(".settings-panel").forEach(p => p.classList.add("hidden"));
     const panel = document.getElementById("panel-" + name);
     if (panel) panel.classList.remove("hidden");
     if (name === "webhooks") loadWebhooksPanel();
@@ -3683,8 +3685,9 @@ document.addEventListener("click", (e) => {
 
 
 (function init() {
-    // Splash: some até auth resolver
-    setTimeout(() => { try { hideSplash(); } catch {} }, 2500);
+    setTimeout(function(){ try { hideSplash(); } catch(e){} }, 500);
+    setTimeout(function(){ try { hideSplash(); } catch(e){} }, 1800);
+    document.addEventListener("click", function(){ try { hideSplash(); } catch(e){} }, { once: true });
 
     showView(null);
     $("sticker-picker")?.classList.add("hidden");
