@@ -1408,6 +1408,7 @@ function showView(type) {
 function listenMessages() {
     if (!currentServerId || !currentChannelId) return;
     try { refreshPinnedBar(); } catch {}
+    try { loadMentionCandidates(); } catch {}
     stopMessagesListener();
     const path = `messages/${currentServerId}/${currentChannelId}`;
     const reference = databaseRef(path);
@@ -1460,6 +1461,17 @@ function listenMessages() {
                 root.appendChild(el);
             });
         root.scrollTop = root.scrollHeight;
+        // notificação da última mensagem
+        try {
+            const entries = Object.entries(snap.val() || {});
+            if (entries.length) {
+                const [lastId, lastMsg] = entries.sort((a, b) => (normalizeTimestamp(a[1]?.createdAt) || 0) - (normalizeTimestamp(b[1]?.createdAt) || 0)).pop();
+                if (lastId && lastId !== __lastNotifiedMsgId) {
+                    __lastNotifiedMsgId = lastId;
+                    maybeNotifyIncomingMessage(lastMsg, currentServerId);
+                }
+            }
+        } catch {}
     };
     onValue(reference, callback);
     messagesListener = { reference, callback };
@@ -3576,8 +3588,8 @@ function hideSplash() {
         const s = document.getElementById("splash-screen");
         if (s) {
             s.classList.add("hidden");
-            s.style.display = "none";
-            s.style.pointerEvents = "none";
+            s.style.cssText = "display:none!important;visibility:hidden;pointer-events:none;opacity:0;z-index:-1";
+            try { s.remove(); } catch {}
         }
     } catch (e) {}
 }
@@ -4207,7 +4219,218 @@ function listenVoiceChat() {
 }
 
 
+
+// ===== NOTIFICAÇÕES EXTERNAS + @ AUTOCOMPLETE =====
+async function ensureNotifyPermission() {
+    try {
+        if (!("Notification" in window)) return false;
+        if (Notification.permission === "granted") return true;
+        if (Notification.permission !== "denied") {
+            const p = await Notification.requestPermission();
+            return p === "granted";
+        }
+    } catch {}
+    return false;
+}
+
+function pushOSNotification(title, body, tag) {
+    try {
+        if (!("Notification" in window) || Notification.permission !== "granted") return;
+        // não notifica se a aba está em foco e visível
+        if (document.visibilityState === "visible" && document.hasFocus()) return;
+        const n = new Notification(title || "Union Chat", {
+            body: body || "",
+            tag: tag || "union",
+            icon: "logo.png",
+            badge: "logo.png"
+        });
+        n.onclick = () => { try { window.focus(); n.close(); } catch {} };
+    } catch (e) {
+        console.warn("notify", e);
+    }
+}
+
+// override/extend push notifications for mentions + also friend requests later
+const _pushNotifOrig = typeof pushNotificationsForMessage === "function" ? pushNotificationsForMessage : null;
+
+async function notifyMentionLocal(text, serverId) {
+    if (!currentUser || !text) return;
+    const mentions = extractMentions(text);
+    if (!mentions.length) return;
+    // se a mensagem é minha, não notifica
+}
+
+// Quando chega mensagem no canal, notifica se @me ou @everyone
+function maybeNotifyIncomingMessage(msg, serverId) {
+    if (!msg || !currentUser || msg.uid === currentUser.uid) return;
+    const text = msg.text || "";
+    const myName = (userProfile?.username || userProfile?.displayName || "").toLowerCase().replace(/\s+/g, "_");
+    const hit = /@everyone\b/i.test(text) || (myName && new RegExp("@" + myName + "\\b", "i").test(text));
+    if (hit) {
+        pushOSNotification(
+            msg.authorName || "Menção",
+            text.slice(0, 120),
+            "mention-" + (msg.createdAt || Date.now())
+        );
+    } else if (serverId === currentServerId) {
+        // mensagem no canal atual em background
+        if (document.visibilityState !== "visible") {
+            pushOSNotification(
+                msg.authorName || "Mensagem",
+                text.slice(0, 120),
+                "msg-" + serverId
+            );
+        }
+    }
+}
+
+// Hook: after messages render is hard; listen onValue already - patch listenMessages callback
+// We'll wrap in the forEach of messages - add at end of each message load last message notify
+let __lastNotifiedMsgId = null;
+
+// @ autocomplete
+let __mentionMembers = [];
+let __mentionRoles = [];
+
+async function loadMentionCandidates() {
+    __mentionMembers = [];
+    __mentionRoles = [];
+    if (!currentServerId) return;
+    try {
+        const mem = await safeGet(`serverMembers/${currentServerId}`);
+        if (mem.exists()) {
+            for (const uid of Object.keys(mem.val())) {
+                let name = uid.slice(0, 6);
+                let uname = "";
+                let photo = createDefaultAvatar(uid);
+                try {
+                    const u = await safeGet(`users/${uid}`);
+                    if (u.exists()) {
+                        const v = u.val();
+                        name = v.displayName || name;
+                        uname = (v.username || name).toLowerCase().replace(/\s+/g, "_");
+                        photo = v.photoURL || photo;
+                    }
+                } catch {}
+                __mentionMembers.push({ uid, name, uname, photo, type: "user" });
+            }
+        }
+        const roles = await safeGet(`servers/${currentServerId}/roles`);
+        if (roles.exists()) {
+            Object.entries(roles.val()).forEach(([rid, r]) => {
+                __mentionRoles.push({
+                    id: rid,
+                    name: r.name || "cargo",
+                    uname: String(r.name || "cargo").toLowerCase().replace(/\s+/g, "_"),
+                    type: "role",
+                    color: r.color || "#3dd68c"
+                });
+            });
+        }
+        __mentionRoles.unshift({ id: "everyone", name: "everyone", uname: "everyone", type: "role", color: "#faa81a" });
+    } catch (e) {
+        console.warn("mention candidates", e);
+    }
+}
+
+function showMentionPopup(filter) {
+    const pop = $("mention-popup");
+    if (!pop) return;
+    const f = (filter || "").toLowerCase();
+    const users = __mentionMembers.filter(m => !f || m.uname.includes(f) || m.name.toLowerCase().includes(f)).slice(0, 8);
+    const roles = __mentionRoles.filter(m => !f || m.uname.includes(f) || m.name.toLowerCase().includes(f)).slice(0, 6);
+    const items = [...roles, ...users];
+    if (!items.length) {
+        pop.classList.add("hidden");
+        return;
+    }
+    pop.innerHTML = items.map((m, i) => {
+        if (m.type === "role") {
+            return `<button type="button" class="mention-item" data-mention="@${escapeAttribute(m.uname)}" data-idx="${i}">
+                <span class="mention-role" style="color:${escapeAttribute(m.color)}">@${escapeHTML(m.name)}</span>
+                <span class="meta">cargo</span>
+            </button>`;
+        }
+        return `<button type="button" class="mention-item" data-mention="@${escapeAttribute(m.uname)}" data-idx="${i}">
+            <img src="${escapeAttribute(m.photo)}" alt="" class="mention-av">
+            <span>${escapeHTML(m.name)}</span>
+            <span class="meta">@${escapeHTML(m.uname)}</span>
+        </button>`;
+    }).join("");
+    pop.classList.remove("hidden");
+    pop.querySelectorAll(".mention-item").forEach(btn => {
+        btn.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            insertMention(btn.dataset.mention);
+        });
+    });
+}
+
+function insertMention(mention) {
+    const input = $("message-input");
+    const pop = $("mention-popup");
+    if (!input || !mention) return;
+    const val = input.value;
+    const pos = input.selectionStart || val.length;
+    const before = val.slice(0, pos);
+    const after = val.slice(pos);
+    const replaced = before.replace(/@([\w.-]*)$/, mention + " ");
+    input.value = replaced + after;
+    input.focus();
+    const np = replaced.length;
+    input.setSelectionRange(np, np);
+    pop?.classList.add("hidden");
+    input.dispatchEvent(new Event("input"));
+}
+
+document.getElementById("message-input")?.addEventListener("input", (e) => {
+    const v = e.target.value || "";
+    const pos = e.target.selectionStart || v.length;
+    const before = v.slice(0, pos);
+    const m = before.match(/@([\w.-]*)$/);
+    if (m) {
+        if (!__mentionMembers.length && currentServerId) loadMentionCandidates().then(() => showMentionPopup(m[1]));
+        else showMentionPopup(m[1]);
+    } else {
+        $("mention-popup")?.classList.add("hidden");
+    }
+});
+
+document.getElementById("message-input")?.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") $("mention-popup")?.classList.add("hidden");
+});
+
+// Friend request notifications
+async function watchFriendRequests() {
+    if (!currentUser) return;
+    const reference = databaseRef(`friendRequests/${currentUser.uid}`);
+    onValue(reference, (snap) => {
+        if (!snap.exists()) return;
+        Object.entries(snap.val()).forEach(([from, req]) => {
+            const tag = "fr-" + from;
+            if (sessionStorage.getItem(tag)) return;
+            sessionStorage.setItem(tag, "1");
+            pushOSNotification(
+                "Pedido de amizade",
+                (req.fromName || "Alguém") + " quer ser seu amigo",
+                tag
+            );
+        });
+    });
+}
+
+// Request permission once signed in
+window.addEventListener("devcord:signed-in", async () => {
+    hideSplash();
+    await ensureNotifyPermission();
+    try { watchFriendRequests(); } catch {}
+    try { await loadMentionCandidates(); } catch {}
+});
+
+
 (function init() {
+    try { hideSplash(); } catch {}
+
     try { applyAppChromeSettings(); } catch {}
 
     setTimeout(function(){ try { hideSplash(); } catch(e){} }, 500);

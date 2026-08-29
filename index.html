@@ -16,6 +16,21 @@
         <img src="logo.png" alt="Union" class="splash-logo" onerror="this.style.display='none'">
         <div class="splash-text">Union Chat</div>
     </div>
+    <script>
+      (function(){
+        function kill(){
+          var s=document.getElementById('splash-screen');
+          if(!s)return;
+          s.className+=' hidden';
+          s.style.display='none';
+          s.style.pointerEvents='none';
+        }
+        setTimeout(kill,700);
+        setTimeout(kill,2000);
+        setTimeout(kill,4000);
+        document.addEventListener('DOMContentLoaded',function(){ setTimeout(kill,300); });
+      })();
+    </script>
 
     <!-- AUTH -->
     <div id="auth-screen" class="auth-screen">
@@ -142,6 +157,7 @@
                     <span id="reply-bar-text">Respondendo...</span>
                     <button type="button" id="reply-bar-cancel" class="icon-btn" title="Cancelar">×</button>
                 </div>
+                <div id="mention-popup" class="mention-popup hidden"></div>
                 <div id="md-preview" class="md-preview hidden"></div>
                 <div id="attach-preview" class="attach-preview hidden"></div>
                 <form id="message-form" class="message-form">

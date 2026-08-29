@@ -131,7 +131,16 @@ export async function ensureUserDoc(user) {
   return (await get(uRef)).val();
 }
 
+function killSplash() {
+  const s = document.getElementById("splash-screen");
+  if (!s) return;
+  s.classList.add("hidden");
+  s.style.cssText = "display:none!important;visibility:hidden;pointer-events:none;opacity:0;z-index:-1";
+  try { s.remove(); } catch {}
+}
+
 onAuthStateChanged(auth, async (user) => {
+  killSplash();
   if (user) {
     await ensureUserDoc(user);
     authScreen.classList.add("hidden");
@@ -142,3 +151,8 @@ onAuthStateChanged(auth, async (user) => {
     authScreen.classList.remove("hidden");
   }
 });
+
+// failsafe splash
+setTimeout(killSplash, 800);
+setTimeout(killSplash, 2000);
+
