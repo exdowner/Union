@@ -7,7 +7,33 @@ import {
     onChildAdded, off, query, orderByChild, startAt, endAt, limitToFirst
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-database.js";
 import { imageToBase64 } from "./image.js";
-import { joinVoiceChannel, leaveVoiceChannel, startScreenShare as webrtcStartScreenShare, stopScreenShare, isSharingScreen, toggleCam as webrtcToggleCam, enableCamera, disableCamera } from "./webrtc.js";
+// WebRTC carregado sob demanda (se falhar, o resto do app continua)
+let joinVoiceChannel = async () => { throw new Error("Call indisponível"); };
+let leaveVoiceChannel = async () => {};
+let webrtcStartScreenShare = async () => { throw new Error("Share indisponível"); };
+let stopScreenShare = async () => {};
+let isSharingScreen = () => false;
+let webrtcToggleCam = async () => {};
+let enableCamera = async () => {};
+let disableCamera = async () => {};
+async function loadWebRTC() {
+  try {
+    const m = await import("./webrtc.js");
+    joinVoiceChannel = m.joinVoiceChannel;
+    leaveVoiceChannel = m.leaveVoiceChannel;
+    webrtcStartScreenShare = m.startScreenShare;
+    stopScreenShare = m.stopScreenShare;
+    isSharingScreen = m.isSharingScreen;
+    webrtcToggleCam = m.toggleCam;
+    enableCamera = m.enableCamera;
+    disableCamera = m.disableCamera;
+    return true;
+  } catch (e) {
+    console.warn("webrtc load failed", e);
+    return false;
+  }
+}
+loadWebRTC();
 
 // =====================================================
 // ESTADO
@@ -1924,6 +1950,7 @@ function setupVoiceView(channel) {
 $("join-voice-btn")?.addEventListener("click", async () => {
     if (!currentServerId || !currentChannelId || !currentUser) return;
     try {
+        await loadWebRTC();
         await joinVoiceChannel({
             serverId: currentServerId,
             channelId: currentChannelId,
