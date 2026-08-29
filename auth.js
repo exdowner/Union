@@ -8,11 +8,21 @@ import {
   serverTimestamp,
   googleProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
 } from "./firebase-config.js";
 import { ref, set, get } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-database.js";
 
 const authScreen = document.getElementById("auth-screen");
 const appRoot = document.getElementById("app");
+
+function killSplash() {
+  const s = document.getElementById("splash-screen");
+  if (!s) return;
+  s.classList.add("hidden");
+  s.style.cssText = "display:none!important;visibility:hidden;pointer-events:none;opacity:0;z-index:-1";
+  try { s.remove(); } catch {}
+}
 
 const tabs = document.querySelectorAll(".auth-tab");
 const loginForm = document.getElementById("login-form");
@@ -32,7 +42,7 @@ tabs.forEach((tab) => {
   });
 });
 
-loginForm.addEventListener("submit", async (e) => {
+loginForm?.addEventListener("submit", async (e) => {
   e.preventDefault();
   const email = document.getElementById("login-email").value.trim();
   const password = document.getElementById("login-password").value;
@@ -45,7 +55,7 @@ loginForm.addEventListener("submit", async (e) => {
   }
 });
 
-registerForm.addEventListener("submit", async (e) => {
+registerForm?.addEventListener("submit", async (e) => {
   e.preventDefault();
   const name = document.getElementById("register-name").value.trim();
   const email = document.getElementById("register-email").value.trim();
@@ -61,7 +71,7 @@ registerForm.addEventListener("submit", async (e) => {
       photoURL: "",
       bannerURL: "",
       bio: "",
-      accentColor: "#5ee6c4",
+      accentColor: "#3dd68c",
       nameFont: "Inter",
       socialLinks: "",
       customStatus: "Online",
@@ -72,56 +82,75 @@ registerForm.addEventListener("submit", async (e) => {
   }
 });
 
+async function ensureGoogleUser(u) {
+  const snap = await get(ref(rtdb, `users/${u.uid}`));
+  if (!snap.exists()) {
+    await set(ref(rtdb, `users/${u.uid}`), {
+      displayName: u.displayName || "Usuário",
+      email: u.email || "",
+      photoURL: u.photoURL || "",
+      bannerURL: "",
+      bio: "",
+      accentColor: "#3dd68c",
+      nameFont: "Inter",
+      socialLinks: "",
+      customStatus: "Online",
+      createdAt: serverTimestamp(),
+    });
+  }
+}
+
 document.getElementById("google-login-btn")?.addEventListener("click", async () => {
   const errorEl = document.getElementById("login-error");
   if (errorEl) errorEl.textContent = "";
   try {
-    const cred = await signInWithPopup(auth, googleProvider);
-    const u = cred.user;
-    const snap = await get(ref(rtdb, `users/${u.uid}`));
-    if (!snap.exists()) {
-      await set(ref(rtdb, `users/${u.uid}`), {
-        displayName: u.displayName || "Usuário",
-        email: u.email || "",
-        photoURL: u.photoURL || "",
-        bannerURL: "",
-        bio: "",
-        accentColor: "#3dd68c",
-        nameFont: "Inter",
-        socialLinks: "",
-        customStatus: "Online",
-        createdAt: serverTimestamp(),
-      });
+    const isMobile = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
+    if (isMobile) {
+      await signInWithRedirect(auth, googleProvider);
+      return;
     }
+    const cred = await signInWithPopup(auth, googleProvider);
+    await ensureGoogleUser(cred.user);
   } catch (err) {
-    if (errorEl) errorEl.textContent = traduzErro(err.code) || err.message;
+    try {
+      await signInWithRedirect(auth, googleProvider);
+    } catch (e2) {
+      if (errorEl) errorEl.textContent = traduzErro(err.code) || err.message || String(err);
+    }
   }
 });
+
+getRedirectResult(auth).then(async (cred) => {
+  if (cred?.user) await ensureGoogleUser(cred.user);
+}).catch(() => {});
 
 function traduzErro(code) {
   const map = {
     "auth/email-already-in-use": "Esse email já está cadastrado.",
     "auth/invalid-email": "Email inválido.",
-    "auth/weak-password": "Senha muito fraca (mínimo 6 caracteres).",
-    "auth/invalid-credential": "Email ou senha incorretos.",
-    "auth/user-not-found": "Usuário não encontrado.",
+    "auth/weak-password": "Senha muito fraca (mín. 6 caracteres).",
+    "auth/user-not-found": "Conta não encontrada.",
     "auth/wrong-password": "Senha incorreta.",
+    "auth/invalid-credential": "Email ou senha incorretos.",
+    "auth/too-many-requests": "Muitas tentativas. Aguarde um pouco.",
+    "auth/popup-closed-by-user": "Login cancelado.",
+    "auth/popup-blocked": "Popup bloqueado. Tentando outro método…",
+    "auth/unauthorized-domain": "Domínio não autorizado no Firebase (adicione o domínio do site).",
   };
-  return map[code] || "Ocorreu um erro. Tente novamente.";
+  return map[code] || "Erro de autenticação.";
 }
 
-// Garante que o perfil existe (para contas antigas/edge cases)
-export async function ensureUserDoc(user) {
+async function ensureUserDoc(user) {
   const uRef = ref(rtdb, `users/${user.uid}`);
   const snap = await get(uRef);
   if (!snap.exists()) {
     await set(uRef, {
-      displayName: user.displayName || "Novo usuário",
-      email: user.email,
+      displayName: user.displayName || "Usuário",
+      email: user.email || "",
       photoURL: user.photoURL || "",
       bannerURL: "",
       bio: "",
-      accentColor: "#5ee6c4",
+      accentColor: "#3dd68c",
       nameFont: "Inter",
       socialLinks: "",
       customStatus: "Online",
@@ -131,28 +160,18 @@ export async function ensureUserDoc(user) {
   return (await get(uRef)).val();
 }
 
-function killSplash() {
-  const s = document.getElementById("splash-screen");
-  if (!s) return;
-  s.classList.add("hidden");
-  s.style.cssText = "display:none!important;visibility:hidden;pointer-events:none;opacity:0;z-index:-1";
-  try { s.remove(); } catch {}
-}
-
 onAuthStateChanged(auth, async (user) => {
   killSplash();
   if (user) {
-    await ensureUserDoc(user);
-    authScreen.classList.add("hidden");
-    appRoot.classList.remove("hidden");
+    try { await ensureUserDoc(user); } catch (e) { console.warn(e); }
+    authScreen?.classList.add("hidden");
+    appRoot?.classList.remove("hidden");
     window.dispatchEvent(new CustomEvent("devcord:signed-in", { detail: user }));
   } else {
-    appRoot.classList.add("hidden");
-    authScreen.classList.remove("hidden");
+    appRoot?.classList.add("hidden");
+    authScreen?.classList.remove("hidden");
   }
 });
 
-// failsafe splash
-setTimeout(killSplash, 800);
-setTimeout(killSplash, 2000);
-
+setTimeout(killSplash, 400);
+setTimeout(killSplash, 1500);

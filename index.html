@@ -7,37 +7,17 @@
     <title>Union Chat</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Poppins:wght@500;600;700&family=Roboto:wght@400;500;700&family=Montserrat:wght@500;600;700&family=Oswald:wght@500;600;700&family=Playfair+Display:wght@500;600;700&family=Merriweather:wght@400;700&family=Nunito:wght@500;600;700&family=Raleway:wght@500;600;700&family=Ubuntu:wght@400;500;700&family=Comfortaa:wght@500;600;700&family=Pacifico&family=Lobster&family=Press+Start+2P&family=Bangers&family=Orbitron:wght@500;700&family=Audiowide&family=VT323&family=Indie+Flower&family=Caveat:wght@500;600;700&family=Dancing+Script:wght@500;600;700&family=Bebas+Neue&family=Anton&family=Quicksand:wght@500;600;700&family=Rubik:wght@500;600;700&family=Source+Code+Pro:wght@500;600&family=Fira+Code:wght@500;600&family=Comic+Neue:wght@400;700&family=Shadows+Into+Light&family=Permanent+Marker&family=Creepster&family=Fredoka:wght@500;600;700&family=Exo+2:wght@500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=20260828d">
 </head>
 <body data-theme="dark">
     <div id="bg-fx" class="bg-fx" aria-hidden="true"></div>
-
-    <div id="splash-screen" class="splash-screen">
-        <img src="logo.png" alt="Union" class="splash-logo" onerror="this.style.display='none'">
-        <div class="splash-text">Union Chat</div>
-    </div>
-    <script>
-      (function(){
-        function kill(){
-          var s=document.getElementById('splash-screen');
-          if(!s)return;
-          s.className+=' hidden';
-          s.style.display='none';
-          s.style.pointerEvents='none';
-        }
-        setTimeout(kill,700);
-        setTimeout(kill,2000);
-        setTimeout(kill,4000);
-        document.addEventListener('DOMContentLoaded',function(){ setTimeout(kill,300); });
-      })();
-    </script>
 
     <!-- AUTH -->
     <div id="auth-screen" class="auth-screen">
         <div class="auth-card">
             <div class="auth-brand">
                 <div class="auth-logo">
-                    <img src="logo.png" alt="Union Chat" class="auth-logo-img">
+                    <img src="logo.png?v=20260828c" alt="Union Chat" class="auth-logo-img">
                 </div>
                 <h1>Union Chat</h1>
                 <p>Seu espaço para conversar, criar comunidades e ficar conectado.</p>
@@ -81,7 +61,7 @@
     <div id="app" class="app hidden">
         <nav class="server-rail" id="server-rail">
             <button type="button" class="server-pill server-pill-home active" id="home-pill" title="Início">
-                <img src="logo.png" alt="UC" class="home-logo-img">
+                <img src="logo.png?v=20260828c" alt="UC" class="home-logo-img">
             </button>
             <div class="server-divider"></div>
             <div class="server-list" id="server-list"></div>
@@ -929,9 +909,8 @@
     </div>
     <div id="toast" class="toast hidden"></div>
 
-    <script type="module" src="firebase-config.js"></script>
-    <script type="module" src="auth.js"></script>
-    <script type="module" src="app.js"></script>
+    <script type="module" src="auth.js?v=20260828d"></script>
+    <script type="module" src="app.js?v=20260828d"></script>
 
     <!-- Mobile sidebar toggle -->
     <script>

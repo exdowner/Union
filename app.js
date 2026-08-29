@@ -13,6 +13,11 @@ import { joinVoiceChannel, leaveVoiceChannel, startScreenShare as webrtcStartScr
 // ESTADO
 // =====================================================
 let currentUser = null;
+let __lastNotifiedMsgId = null;
+function sanitizeUserText(text) {
+  return String(text || "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").slice(0, 4000);
+}
+
 let userProfile = null;
 let currentServerId = null;
 let currentChannelId = null;
@@ -262,21 +267,26 @@ $("modal-overlay")?.addEventListener("click", e => {
 // =====================================================
 window.addEventListener("devcord:signed-in", async (e) => {
     try {
+        try { hideSplash(); } catch {}
         currentUser = e.detail;
         if (!currentUser?.uid) throw new Error("Usuário inválido");
-        const snap = await safeGet(`users/${currentUser.uid}`);
-        userProfile = snap.exists() ? snap.val() : {};
-        renderUserCard();
+        try {
+            const snap = await safeGet(`users/${currentUser.uid}`);
+            userProfile = snap.exists() ? snap.val() : {};
+        } catch (err) { console.warn(err); userProfile = {}; }
+        try { renderUserCard(); } catch (err) { console.warn(err); }
         try { applyAppearance(userProfile?.appearance); } catch {}
-        listenServers();
-        listenStickers();
-        setPresence(getCurrentPresence());
-        applyTheme(localStorage.getItem("uc-theme") || "dark");
-        checkInviteFromURL();
+        try { listenServers(); } catch (err) { console.warn(err); }
+        try { listenStickers(); } catch {}
+        try { setPresence(getCurrentPresence()); } catch {}
+        try { applyTheme(localStorage.getItem("uc-theme") || "dark"); } catch {}
+        try { checkInviteFromURL(); } catch {}
         try { listenNotifications(); } catch {}
+        try { ensureNotifyPermission(); } catch {}
+        try { watchFriendRequests(); } catch {}
     } catch (err) {
         console.error(err);
-        toast("Erro ao carregar conta.");
+        try { toast("Erro ao carregar conta."); } catch {}
     }
 });
 
@@ -1468,7 +1478,7 @@ function listenMessages() {
                 const [lastId, lastMsg] = entries.sort((a, b) => (normalizeTimestamp(a[1]?.createdAt) || 0) - (normalizeTimestamp(b[1]?.createdAt) || 0)).pop();
                 if (lastId && lastId !== __lastNotifiedMsgId) {
                     __lastNotifiedMsgId = lastId;
-                    maybeNotifyIncomingMessage(lastMsg, currentServerId);
+                    try { if (typeof maybeNotifyIncomingMessage === "function") maybeNotifyIncomingMessage(lastMsg, currentServerId); } catch {}
                 }
             }
         } catch {}
