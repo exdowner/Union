@@ -6,6 +6,8 @@ import {
   signInWithEmailAndPassword,
   updateProfile,
   serverTimestamp,
+  googleProvider,
+  signInWithPopup,
 } from "./firebase-config.js";
 import { ref, set, get } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-database.js";
 
@@ -67,6 +69,32 @@ registerForm.addEventListener("submit", async (e) => {
     });
   } catch (err) {
     errorEl.textContent = traduzErro(err.code);
+  }
+});
+
+document.getElementById("google-login-btn")?.addEventListener("click", async () => {
+  const errorEl = document.getElementById("login-error");
+  if (errorEl) errorEl.textContent = "";
+  try {
+    const cred = await signInWithPopup(auth, googleProvider);
+    const u = cred.user;
+    const snap = await get(ref(rtdb, `users/${u.uid}`));
+    if (!snap.exists()) {
+      await set(ref(rtdb, `users/${u.uid}`), {
+        displayName: u.displayName || "Usuário",
+        email: u.email || "",
+        photoURL: u.photoURL || "",
+        bannerURL: "",
+        bio: "",
+        accentColor: "#3dd68c",
+        nameFont: "Inter",
+        socialLinks: "",
+        customStatus: "Online",
+        createdAt: serverTimestamp(),
+      });
+    }
+  } catch (err) {
+    if (errorEl) errorEl.textContent = traduzErro(err.code) || err.message;
   }
 });
 

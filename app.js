@@ -3,7 +3,8 @@ import {
     auth, rtdb, signOut, updateProfile, serverTimestamp
 } from "./firebase-config.js";
 import {
-    ref, push, set, update, remove, get, onValue, off, query, orderByChild, startAt, endAt, limitToFirst
+    ref, push, set, update, remove, get, onValue,
+    onChildAdded, off, query, orderByChild, startAt, endAt, limitToFirst
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-database.js";
 import { imageToBase64 } from "./image.js";
 import { joinVoiceChannel, leaveVoiceChannel, startScreenShare as webrtcStartScreenShare, stopScreenShare, isSharingScreen, toggleCam as webrtcToggleCam, enableCamera, disableCamera } from "./webrtc.js";
@@ -343,6 +344,7 @@ function listenServers() {
         renderServerList();
         hideSplash();
         try { checkGlobalBanAndNotices(); } catch {}
+        try { startWebhookInboxListener(); } catch {}
     };
     onValue(reference, callback);
     userServersListener = { reference, callback };
@@ -574,6 +576,16 @@ bindServerSettingsBtn($("header-server-settings-btn"));
 
 async function openServerSettings() {
     showView("server-settings");
+    // restaura abas: overview visível
+    try {
+        const root = document.getElementById("view-server-settings");
+        root?.querySelectorAll(".server-settings-tabs [data-stab]").forEach(t => {
+            t.classList.toggle("active", t.dataset.stab === "overview");
+        });
+        root?.querySelectorAll(".settings-panel").forEach(p => p.classList.add("hidden"));
+        document.getElementById("stab-overview")?.classList.remove("hidden");
+        document.getElementById("panel-overview")?.classList.remove("hidden");
+    } catch {}
     let server = serverCache[currentServerId];
     if (!server) {
         try {
@@ -1468,6 +1480,7 @@ $("message-form")?.addEventListener("submit", async (e) => {
     }
 
     try {
+        text = typeof sanitizeUserText === "function" ? sanitizeUserText(text) : text;
         const payload = {
             uid: currentUser.uid,
             authorName: getCurrentDisplayName(),
@@ -2960,9 +2973,14 @@ async function sendFriendRequest(toUid) {
             from: currentUser.uid,
             fromName: getCurrentDisplayName(),
             fromPhoto: getCurrentPhoto(),
+            status: "pending",
             createdAt: serverTimestamp()
         });
-        toast("Pedido de amizade enviado.");
+        // marca pedido enviado do meu lado
+        await safeSet(`friendRequestsSent/${currentUser.uid}/${toUid}`, {
+            to: toUid, status: "pending", createdAt: serverTimestamp()
+        });
+        toast("Pedido enviado. Espere a pessoa aceitar. Você já pode mandar DM.");
     } catch (e) {
         toast("Erro: " + e.message);
     }
@@ -3354,8 +3372,11 @@ $("dm-video-call-btn")?.addEventListener("click", async () => {
 // Fix share-screen on server voice - always show when in call
 $("join-voice-btn")?.addEventListener("click", () => {
     setTimeout(() => {
-        $("share-screen-btn")?.classList.remove("hidden");
-        $("screen-quality")?.classList.remove("hidden");
+        if (window.matchMedia && window.matchMedia("(min-width: 901px)").matches) {
+            $("share-screen-btn")?.classList.remove("hidden");
+            $("screen-quality")?.classList.remove("hidden");
+        }
+        try { listenVoiceChat(); } catch {}
         $("toggle-cam-btn")?.classList.remove("hidden");
     }, 500);
 });
@@ -3608,7 +3629,14 @@ async function assertSafeImageFile(file) {
 
 
 
-// Server webhooks
+
+// ===== WEBHOOKS DE VERDADE (Firebase incoming) =====
+function webhookPublicUrl(token) {
+    // Firebase REST — qualquer bot pode POST JSON { "content": "texto", "username": "Bot" }
+    const base = "https://devcord-4dcf6-default-rtdb.firebaseio.com";
+    return `${base}/incomingWebhooks/${token}.json`;
+}
+
 async function loadWebhooksPanel() {
     const list = $("webhooks-list");
     const sel = $("webhook-channel");
@@ -3623,7 +3651,7 @@ async function loadWebhooksPanel() {
                     if (ch?.type === "voice") return;
                     const o = document.createElement("option");
                     o.value = id;
-                    o.textContent = ch.name || id;
+                    o.textContent = "#" + (ch.name || id);
                     sel.appendChild(o);
                 });
             }
@@ -3632,25 +3660,46 @@ async function loadWebhooksPanel() {
     try {
         const snap = await safeGet(`servers/${currentServerId}/webhooks`);
         if (!snap.exists()) {
-            list.innerHTML = "<p class='empty-hint'>Nenhum webhook.</p>";
+            list.innerHTML = "<p class='empty-hint'>Nenhum webhook. Crie um para receber POST de bots.</p>";
             return;
         }
         Object.entries(snap.val()).forEach(([id, wh]) => {
-            const url = `${location.origin}${location.pathname}?webhook=${currentServerId}_${id}`;
+            const token = wh.token || id;
+            const url = webhookPublicUrl(token);
             const el = document.createElement("div");
             el.className = "webhook-item";
             el.innerHTML = `
                 <strong>${escapeHTML(wh.name || "Webhook")}</strong>
                 <span class="meta">Canal: ${escapeHTML(wh.channelId || "")}</span>
-                <code>${escapeHTML(url)}</code>
-                <button type="button" class="btn-secondary btn-sm" data-del-wh="${id}">Apagar</button>
-            `;
+                <code style="display:block;margin:6px 0;word-break:break-all">${escapeHTML(url)}</code>
+                <span class="empty-hint">POST JSON: {"content":"olá","username":"MeuBot"}</span>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+                  <button type="button" class="btn-secondary btn-sm" data-copy-wh="${escapeAttribute(url)}">Copiar URL</button>
+                  <button type="button" class="btn-secondary btn-sm danger-btn" data-del-wh="${id}">Apagar</button>
+                </div>`;
             list.appendChild(el);
+        });
+        list.querySelectorAll("[data-copy-wh]").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                try {
+                    await navigator.clipboard.writeText(btn.dataset.copyWh);
+                    toast("URL copiada.");
+                } catch { toast(btn.dataset.copyWh); }
+            });
         });
         list.querySelectorAll("[data-del-wh]").forEach(btn => {
             btn.addEventListener("click", async () => {
-                await remove(databaseRef(`servers/${currentServerId}/webhooks/${btn.dataset.delWh}`));
-                loadWebhooksPanel();
+                const id = btn.dataset.delWh;
+                try {
+                    const snap = await safeGet(`servers/${currentServerId}/webhooks/${id}`);
+                    const tok = snap.exists() ? snap.val().token : null;
+                    await remove(databaseRef(`servers/${currentServerId}/webhooks/${id}`));
+                    if (tok) {
+                        try { await remove(databaseRef(`webhookIndex/${tok}`)); } catch {}
+                    }
+                    loadWebhooksPanel();
+                    toast("Webhook removido.");
+                } catch (e) { toast(e.message); }
             });
         });
     } catch (e) {
@@ -3666,13 +3715,74 @@ $("create-webhook-btn")?.addEventListener("click", async () => {
     const channelId = $("webhook-channel")?.value;
     if (!channelId) return toast("Escolha um canal.");
     try {
-        const refPush = await safePush(`servers/${currentServerId}/webhooks`, {
+        const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
+        const pushRef = await safePush(`servers/${currentServerId}/webhooks`, {
             name,
             channelId,
+            token,
             createdBy: currentUser.uid,
-            createdAt: serverTimestamp(),
-            token: Math.random().toString(36).slice(2) + Date.now().toString(36)
+            createdAt: serverTimestamp()
         });
+        await safeSet(`webhookIndex/${token}`, {
+            serverId: currentServerId,
+            channelId,
+            name,
+            webhookId: pushRef?.key || null
+        });
+        toast("Webhook criado! Copie a URL REST.");
+        if (exists("webhook-name")) $("webhook-name").value = "";
+        loadWebhooksPanel();
+        startWebhookInboxListener();
+    } catch (e) {
+        toast("Erro: " + e.message);
+    }
+});
+
+let webhookInboxUnsubs = [];
+function stopWebhookInboxListener() {
+    webhookInboxUnsubs.forEach(u => { try { u(); } catch {} });
+    webhookInboxUnsubs = [];
+}
+
+async function startWebhookInboxListener() {
+    stopWebhookInboxListener();
+    if (!currentUser) return;
+    // escuta webhooks dos servidores do user
+    try {
+        const us = await safeGet(`userServers/${currentUser.uid}`);
+        if (!us.exists()) return;
+        for (const sid of Object.keys(us.val())) {
+            const whSnap = await safeGet(`servers/${sid}/webhooks`);
+            if (!whSnap.exists()) continue;
+            Object.values(whSnap.val()).forEach(wh => {
+                if (!wh?.token || !wh.channelId) return;
+                const reference = databaseRef(`incomingWebhooks/${wh.token}`);
+                const unsub = onChildAdded(reference, async (snap) => {
+                    const payload = snap.val();
+                    if (!payload || payload._processed) return;
+                    try {
+                        await safePush(`messages/${sid}/${wh.channelId}`, {
+                            uid: "webhook",
+                            authorName: payload.username || wh.name || "Webhook",
+                            authorPhoto: payload.avatar_url || "",
+                            text: payload.content || payload.text || "",
+                            createdAt: serverTimestamp(),
+                            webhook: true
+                        });
+                        await safeUpdate(`incomingWebhooks/${wh.token}/${snap.key}`, { _processed: true });
+                    } catch (err) {
+                        console.warn("webhook deliver", err);
+                    }
+                });
+                webhookInboxUnsubs.push(unsub);
+            });
+        }
+    } catch (e) {
+        console.warn("webhook listen", e);
+    }
+}
+
+
         toast("Webhook criado!");
         if (exists("webhook-name")) $("webhook-name").value = "";
         loadWebhooksPanel();
@@ -3685,13 +3795,20 @@ $("create-webhook-btn")?.addEventListener("click", async () => {
 document.addEventListener("click", (e) => {
     const tab = e.target.closest(".server-settings-tabs [data-stab]");
     if (!tab) return;
+    e.preventDefault();
+    e.stopPropagation();
     const name = tab.dataset.stab;
-    const root = tab.closest(".modal") || document.getElementById("view-server-settings") || document;
+    const root = document.getElementById("view-server-settings") || document;
     root.querySelectorAll(".server-settings-tabs [data-stab]").forEach(t => t.classList.toggle("active", t === tab));
     root.querySelectorAll(".settings-panel").forEach(p => p.classList.add("hidden"));
-    const panel = document.getElementById("panel-" + name);
+    // IDs mistos: stab-overview / panel-webhooks
+    const panel = document.getElementById("panel-" + name) || document.getElementById("stab-" + name);
     if (panel) panel.classList.remove("hidden");
     if (name === "webhooks") loadWebhooksPanel();
+    if (name === "members") { try { loadServerMembersPanel(); } catch (err) {} }
+    if (name === "bans") { try { loadServerBansPanel(); } catch (err) {} }
+    if (name === "roles") { try { loadRolesPanel?.(); } catch (err) {} }
+    if (name === "emojis") { try { loadServerEmojisPanel?.(); } catch (err) {} }
 });
 
 
@@ -3699,6 +3816,81 @@ document.addEventListener("click", (e) => {
 // =====================================================
 // APP SETTINGS + IDS + DECO + NFA + NOTICES + MUTE
 // =====================================================
+async function loadServerMembersPanel() {
+    const box = $("stab-members") || $("panel-members");
+    if (!box || !currentServerId) return;
+    let host = box.querySelector("#server-members-list");
+    if (!host) {
+        host = document.createElement("div");
+        host.id = "server-members-list";
+        box.appendChild(host);
+    }
+    host.innerHTML = "<p class='empty-hint'>Carregando…</p>";
+    try {
+        const snap = await safeGet(`serverMembers/${currentServerId}`);
+        if (!snap.exists()) {
+            host.innerHTML = "<p class='empty-hint'>Sem membros.</p>";
+            return;
+        }
+        host.innerHTML = "";
+        for (const uid of Object.keys(snap.val())) {
+            let name = uid.slice(0, 8);
+            let photo = createDefaultAvatar(uid);
+            try {
+                const u = await safeGet(`users/${uid}`);
+                if (u.exists()) {
+                    name = u.val().displayName || name;
+                    photo = u.val().photoURL || photo;
+                }
+            } catch {}
+            const row = document.createElement("div");
+            row.className = "discover-card";
+            row.innerHTML = `
+              <img class="discover-icon" src="${escapeAttribute(photo)}" alt="">
+              <div class="discover-info"><strong>${escapeHTML(name)}</strong><span class="meta">${escapeHTML(uid)}</span></div>
+              <button type="button" class="btn-secondary btn-sm" data-mute-member="${uid}" data-muted="0">Mutar</button>
+              <button type="button" class="btn-secondary btn-sm danger-btn" data-ban-member="${uid}">Banir</button>`;
+            host.appendChild(row);
+        }
+    } catch (e) {
+        host.innerHTML = `<p class='empty-hint'>${escapeHTML(e.message)}</p>`;
+    }
+}
+
+async function loadServerBansPanel() {
+    const box = $("stab-bans") || $("panel-bans");
+    if (!box || !currentServerId) return;
+    let host = box.querySelector("#server-bans-list");
+    if (!host) {
+        host = document.createElement("div");
+        host.id = "server-bans-list";
+        box.appendChild(host);
+    }
+    host.innerHTML = "";
+    try {
+        const snap = await safeGet(`servers/${currentServerId}/bans`);
+        if (!snap.exists()) {
+            host.innerHTML = "<p class='empty-hint'>Nenhum ban.</p>";
+            return;
+        }
+        Object.entries(snap.val()).forEach(([uid, b]) => {
+            const el = document.createElement("div");
+            el.className = "discover-card";
+            el.innerHTML = `<div class="discover-info"><strong>${escapeHTML(uid)}</strong><span class="meta">${escapeHTML(b?.reason || "")}</span></div>
+              <button type="button" class="btn-secondary btn-sm" data-unban="${uid}">Desbanir</button>`;
+            host.appendChild(el);
+        });
+        host.querySelectorAll("[data-unban]").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                await remove(databaseRef(`servers/${currentServerId}/bans/${btn.dataset.unban}`));
+                loadServerBansPanel();
+            });
+        });
+    } catch (e) {
+        host.innerHTML = `<p class='empty-hint'>${escapeHTML(e.message)}</p>`;
+    }
+}
+
 function applyAppChromeSettings(cfg = {}) {
     const style = cfg.iconStyle || localStorage.getItem("union_icon_style") || "white";
     document.body.classList.remove("icon-white", "icon-yellow", "icon-outline");
@@ -3719,8 +3911,13 @@ function applyAppChromeSettings(cfg = {}) {
     document.body.classList.toggle("reduce-motion", !!cfg.reduceMotion || localStorage.getItem("union_reduce_motion") === "1");
 }
 
-$("open-app-settings-btn")?.addEventListener("click", () => {
-    if (!exists("modal-app-settings")) return;
+$("open-app-settings-btn")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!exists("modal-app-settings")) {
+        toast("Modal de configurações do app não encontrada.");
+        return;
+    }
     if (exists("app-user-id")) $("app-user-id").textContent = currentUser?.uid || "—";
     if (exists("app-user-email")) $("app-user-email").textContent = currentUser?.email || "—";
     if (exists("app-icon-style")) $("app-icon-style").value = localStorage.getItem("union_icon_style") || "white";
@@ -3729,6 +3926,8 @@ $("open-app-settings-btn")?.addEventListener("click", () => {
     if (exists("app-reduce-motion")) $("app-reduce-motion").checked = localStorage.getItem("union_reduce_motion") === "1";
     if (exists("app-nfa-enabled")) $("app-nfa-enabled").checked = localStorage.getItem("union_nfa") === "1";
     if (exists("app-nfa-code")) $("app-nfa-code").value = localStorage.getItem("union_nfa_code") || "";
+    if (exists("app-bg-fx")) $("app-bg-fx").value = localStorage.getItem("union_bg_fx") || "none";
+    if (exists("app-phone")) $("app-phone").value = userProfile?.twoFactor?.phone || userProfile?.phone || "";
     $("modal-app-settings").classList.remove("hidden");
 });
 
@@ -3773,6 +3972,8 @@ $("save-app-settings")?.addEventListener("click", async () => {
     localStorage.setItem("union_mini_anim", miniAnim ? "1" : "0");
     localStorage.setItem("union_reduce_motion", reduceMotion ? "1" : "0");
     localStorage.setItem("union_nfa", $("app-nfa-enabled")?.checked ? "1" : "0");
+    const bgFx = $("app-bg-fx")?.value || "none";
+    applyBgFx(bgFx);
     applyAppChromeSettings({ iconStyle, colorTheme, miniAnim, reduceMotion });
     if (currentUser) {
         try {
@@ -3889,6 +4090,122 @@ document.addEventListener("click", async (e) => {
         } catch (err) { toast(err.message); }
     }
 });
+
+
+// Live markdown preview (seguro)
+document.getElementById("message-input")?.addEventListener("input", (e) => {
+    const prev = document.getElementById("md-preview");
+    if (!prev) return;
+    const v = e.target.value || "";
+    if (!v.trim()) {
+        prev.classList.add("hidden");
+        prev.innerHTML = "";
+        return;
+    }
+    prev.classList.remove("hidden");
+    prev.innerHTML = renderMarkdown(v);
+});
+
+// Background FX
+function applyBgFx(mode) {
+    document.body.classList.remove("fx-lines", "fx-hacker", "fx-dots", "fx-lights");
+    if (mode && mode !== "none") document.body.classList.add("fx-" + mode);
+    localStorage.setItem("union_bg_fx", mode || "none");
+}
+try { applyBgFx(localStorage.getItem("union_bg_fx") || "none"); } catch {}
+
+// 2FA recovery codes
+let __last2faCodes = [];
+$("app-2fa-generate")?.addEventListener("click", async () => {
+    const codes = [];
+    for (let i = 0; i < 10; i++) {
+        const a = Array.from(crypto.getRandomValues(new Uint8Array(4))).map(b => b.toString(16).padStart(2, "0")).join("");
+        codes.push(a.toUpperCase());
+    }
+    __last2faCodes = codes;
+    const el = $("app-2fa-codes");
+    if (el) {
+        el.style.display = "block";
+        el.textContent = codes.join("\n");
+    }
+    if (currentUser) {
+        try {
+            // salva hashes simples (não é bcrypt, mas evita texto puro óbvio)
+            const hashes = await Promise.all(codes.map(async (c) => {
+                const data = new TextEncoder().encode(c + ":" + currentUser.uid);
+                const buf = await crypto.subtle.digest("SHA-256", data);
+                return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+            }));
+            await safeUpdate(`users/${currentUser.uid}`, {
+                twoFactor: {
+                    enabled: true,
+                    codes: hashes,
+                    phone: ($("app-phone")?.value || "").trim().slice(0, 20),
+                    generatedAt: Date.now()
+                }
+            });
+            toast("10 códigos gerados. Baixe o .txt agora!");
+        } catch (e) {
+            toast("Salvo local — baixe o arquivo. " + e.message);
+        }
+    }
+});
+
+$("app-2fa-download")?.addEventListener("click", () => {
+    const codes = __last2faCodes.length ? __last2faCodes : ($("app-2fa-codes")?.textContent || "").trim().split("\n").filter(Boolean);
+    if (!codes.length) return toast("Gere os códigos primeiro.");
+    const body = "Union Chat — Códigos de recuperação 2FA\nGuarde offline. Cada código é de uso único.\n\n" + codes.join("\n") + "\n";
+    const blob = new Blob([body], { type: "text/plain" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "union-2fa-codigos.txt";
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast("Download iniciado.");
+});
+
+// Voice call chat
+$("voice-chat-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!currentServerId || !currentChannelId || !currentUser) return;
+    const input = $("voice-chat-input");
+    const text = sanitizeUserText(input?.value || "").trim();
+    if (!text) return;
+    try {
+        await safePush(`voiceChat/${currentServerId}/${currentChannelId}`, {
+            uid: currentUser.uid,
+            authorName: getCurrentDisplayName(),
+            text,
+            createdAt: serverTimestamp()
+        });
+        if (input) input.value = "";
+    } catch (err) {
+        toast(err.message);
+    }
+});
+
+let voiceChatListener = null;
+function listenVoiceChat() {
+    if (voiceChatListener) { try { stopListener(voiceChatListener); } catch {} voiceChatListener = null; }
+    if (!currentServerId || !currentChannelId) return;
+    const reference = databaseRef(`voiceChat/${currentServerId}/${currentChannelId}`);
+    const box = $("voice-chat-messages");
+    if (!box) return;
+    const callback = (snap) => {
+        box.innerHTML = "";
+        const entries = Object.entries(snap.val() || {}).sort((a, b) => (normalizeTimestamp(a[1]?.createdAt) || 0) - (normalizeTimestamp(b[1]?.createdAt) || 0));
+        entries.slice(-50).forEach(([, m]) => {
+            const div = document.createElement("div");
+            div.className = "voice-chat-msg";
+            div.innerHTML = `<strong>${escapeHTML(m.authorName || "User")}</strong>${renderMarkdown(m.text || "")}`;
+            box.appendChild(div);
+        });
+        box.scrollTop = box.scrollHeight;
+    };
+    onValue(reference, callback);
+    voiceChatListener = { reference, callback };
+}
+
 
 (function init() {
     try { applyAppChromeSettings(); } catch {}
